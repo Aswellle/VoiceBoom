@@ -9,6 +9,11 @@ pub struct Database {
     conn: Mutex<Connection>,
 }
 
+/// M6 fix: Helper to lock mutex, recovering from poison
+fn lock_conn(conn: &Mutex<Connection>) -> std::sync::MutexGuard<'_, Connection> {
+    conn.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 impl Database {
     /// Initialize database at the given path, creating tables if needed
     pub fn new<P: AsRef<Path>>(path: P) -> anyhow::Result<Self> {
@@ -22,7 +27,7 @@ impl Database {
 
     /// Create required tables
     fn init_tables(&self) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         conn.execute(
             "CREATE TABLE IF NOT EXISTS settings (
                 key TEXT PRIMARY KEY,
@@ -64,7 +69,7 @@ impl Database {
 
     /// Get a setting value by key
     pub fn get_setting(&self, key: &str) -> anyhow::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         let mut stmt = conn.prepare("SELECT value FROM settings WHERE key = ?1")?;
         let result = stmt
             .query_row([key], |row| row.get::<_, String>(0))
@@ -74,7 +79,7 @@ impl Database {
 
     /// Set a setting value
     pub fn set_setting(&self, key: &str, value: &str) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         conn.execute(
             "INSERT INTO settings (key, value, updated_at) VALUES (?1, ?2, strftime('%s','now'))
              ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
@@ -85,7 +90,7 @@ impl Database {
 
     /// Get all settings as a JSON object
     pub fn get_all_settings(&self) -> anyhow::Result<serde_json::Value> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
         let rows = stmt.query_map([], |row| {
             Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
@@ -107,7 +112,7 @@ impl Database {
         engine: Option<&str>,
         confidence: Option<f64>,
     ) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         conn.execute(
             "INSERT INTO history (text, language, engine, confidence) VALUES (?1, ?2, ?3, ?4)",
             rusqlite::params![text, language, engine, confidence],
@@ -116,12 +121,14 @@ impl Database {
     }
 
     /// Get recognition history
-    pub fn get_history(&self, limit: usize) -> anyhow::Result<Vec<serde_json::Value>> {
-        let conn = self.conn.lock().unwrap();
+    /// M1 fix: Accept i64 instead of usize for rusqlite compatibility
+    pub fn get_history(&self, limit: i64) -> anyhow::Result<Vec<serde_json::Value>> {
+        let conn = lock_conn(&self.conn);
         let mut stmt = conn.prepare(
             "SELECT id, text, language, engine, confidence, created_at
              FROM history ORDER BY created_at DESC LIMIT ?1"
         )?;
+        // m12 fix: Use Value::Null for NaN confidence instead of 0
         let rows = stmt.query_map([limit], |row| {
             let mut obj = serde_json::Map::new();
             obj.insert("id".to_string(), serde_json::Value::Number(row.get::<_, i64>(0)?.into()));
@@ -131,7 +138,8 @@ impl Database {
             obj.insert("engine".to_string(), row.get::<_, Option<String>>(3)?
                 .map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
             obj.insert("confidence".to_string(), row.get::<_, Option<f64>>(4)?
-                .map(|v| serde_json::Value::Number(serde_json::Number::from_f64(v).unwrap_or(0.into())))
+                .and_then(|v| serde_json::Number::from_f64(v))
+                .map(serde_json::Value::Number)
                 .unwrap_or(serde_json::Value::Null));
             obj.insert("created_at".to_string(), serde_json::Value::Number(row.get::<_, i64>(5)?.into()));
             Ok(serde_json::Value::Object(obj))
@@ -146,14 +154,15 @@ impl Database {
 
     /// Clear all recognition history
     pub fn clear_history(&self) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         conn.execute("DELETE FROM history", [])?;
         Ok(())
     }
 
     /// Save model configuration (API key, endpoint, etc.)
+    /// C7 fix: API keys should be stored with encrypted=1 flag
     pub fn save_model_config(&self, key: &str, value: &str, encrypted: bool) -> anyhow::Result<()> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         conn.execute(
             "INSERT INTO model_config (key, value, encrypted, updated_at)
              VALUES (?1, ?2, ?3, strftime('%s','now'))
@@ -165,7 +174,7 @@ impl Database {
 
     /// Get model configuration
     pub fn get_model_config(&self, key: &str) -> anyhow::Result<Option<String>> {
-        let conn = self.conn.lock().unwrap();
+        let conn = lock_conn(&self.conn);
         let mut stmt = conn.prepare("SELECT value FROM model_config WHERE key = ?1")?;
         stmt.query_row([key], |row| row.get::<_, String>(0))
             .optional()

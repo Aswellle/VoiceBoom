@@ -2,12 +2,13 @@
 // Captures 16kHz mono PCM audio from the default microphone
 //
 // Since cpal::Stream is not Send, we use a dedicated thread approach:
-// commands are sent via channels, and the stream lives on its own thread.
+// audio samples are sent through a tokio channel to the ASR engine.
 
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::{SampleRate, SampleFormat};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use tokio::sync::mpsc;
 
 pub const TARGET_SAMPLE_RATE: u32 = 16000;
 pub const CHANNELS: u16 = 1;
@@ -16,6 +17,20 @@ pub const CHANNELS: u16 = 1;
 pub struct AudioCapture {
     is_recording: Arc<AtomicBool>,
     cmd_tx: Option<std::sync::mpsc::Sender<bool>>,
+    // C2 fix: store the audio sender so ASR can receive samples
+    audio_tx: Option<mpsc::UnboundedSender<Vec<f32>>>,
+    // m10 fix: Store thread handle for clean shutdown
+    thread_handle: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Drop for AudioCapture {
+    fn drop(&mut self) {
+        // Signal thread to stop and wait for it
+        self.stop_recording();
+        if let Some(handle) = self.thread_handle.take() {
+            let _ = handle.join();
+        }
+    }
 }
 
 impl AudioCapture {
@@ -23,6 +38,8 @@ impl AudioCapture {
         Self {
             is_recording: Arc::new(AtomicBool::new(false)),
             cmd_tx: None,
+            audio_tx: None,
+            thread_handle: None,
         }
     }
 
@@ -40,18 +57,23 @@ impl AudioCapture {
         devices
     }
 
-    /// Start recording audio
-    pub fn start_recording(&mut self) -> anyhow::Result<()> {
+    /// Start recording audio, returning a receiver for PCM samples (C2 fix)
+    pub fn start_recording(&mut self) -> anyhow::Result<mpsc::UnboundedReceiver<Vec<f32>>> {
         if self.is_recording.load(Ordering::SeqCst) {
-            return Ok(());
+            anyhow::bail!("Already recording");
         }
 
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<bool>();
         self.cmd_tx = Some(cmd_tx);
 
+        // C2 fix: Create channel for sending PCM samples to ASR
+        let (audio_tx, audio_rx) = mpsc::unbounded_channel::<Vec<f32>>();
+        self.audio_tx = Some(audio_tx.clone());
+
         let is_recording = self.is_recording.clone();
 
-        std::thread::spawn(move || {
+        // m10 fix: Store thread handle for clean shutdown
+        self.thread_handle = Some(std::thread::spawn(move || {
             let host = cpal::default_host();
             let device = match host.default_input_device() {
                 Some(d) => d,
@@ -69,26 +91,35 @@ impl AudioCapture {
                 }
             };
 
+            // M5 fix: Use target sample rate, not max
             let channels = config.channels().max(1);
-            let sample_rate = config.sample_rate().0.max(TARGET_SAMPLE_RATE);
             let err_fn = |err| eprintln!("Audio stream error: {}", err);
 
             let is_recording_cb = is_recording.clone();
+            let audio_tx_cb = audio_tx.clone();
 
             let stream_result: Result<cpal::Stream, cpal::BuildStreamError> =
                 match config.sample_format() {
                     SampleFormat::F32 => device.build_input_stream(
                         &cpal::StreamConfig {
                             channels,
-                            sample_rate: SampleRate(sample_rate),
+                            sample_rate: SampleRate(TARGET_SAMPLE_RATE),
                             buffer_size: cpal::BufferSize::Default,
                         },
                         move |data: &[f32], &_| {
-                            if is_recording_cb.load(Ordering::SeqCst) {
-                                // In a full implementation, send samples to ASR
-                                let _mono_sum: f32 = data.iter().sum::<f32>() / data.len().max(1) as f32;
-                                // In production: send mono_sum to ASR engine
+                            if !is_recording_cb.load(Ordering::SeqCst) {
+                                return;
                             }
+                            // M5 fix: Downmix to mono
+                            let mono: Vec<f32> = if channels == 1 {
+                                data.to_vec()
+                            } else {
+                                data.chunks(channels as usize)
+                                    .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                                    .collect()
+                            };
+                            // C2 fix: Send PCM samples to ASR via channel
+                            let _ = audio_tx_cb.send(mono);
                         },
                         err_fn,
                         None,
@@ -96,15 +127,21 @@ impl AudioCapture {
                     SampleFormat::I16 => device.build_input_stream(
                         &cpal::StreamConfig {
                             channels,
-                            sample_rate: SampleRate(sample_rate),
+                            sample_rate: SampleRate(TARGET_SAMPLE_RATE),
                             buffer_size: cpal::BufferSize::Default,
                         },
                         move |data: &[i16], &_| {
-                            if is_recording_cb.load(Ordering::SeqCst) {
-                                let _energy: f32 = data.iter().map(|&s| s as f32 / i16::MAX as f32).sum::<f32>()
-                                    / data.len().max(1) as f32;
-                                let _ = _energy;
+                            if !is_recording_cb.load(Ordering::SeqCst) {
+                                return;
                             }
+                            let mono: Vec<f32> = data
+                                .chunks(channels as usize)
+                                .map(|frame| {
+                                    frame.iter().map(|&s| s as f32 / i16::MAX as f32).sum::<f32>()
+                                        / channels as f32
+                                })
+                                .collect();
+                            let _ = audio_tx_cb.send(mono);
                         },
                         err_fn,
                         None,
@@ -112,18 +149,24 @@ impl AudioCapture {
                     SampleFormat::U16 => device.build_input_stream(
                         &cpal::StreamConfig {
                             channels,
-                            sample_rate: SampleRate(sample_rate),
+                            sample_rate: SampleRate(TARGET_SAMPLE_RATE),
                             buffer_size: cpal::BufferSize::Default,
                         },
                         move |data: &[u16], &_| {
-                            if is_recording_cb.load(Ordering::SeqCst) {
-                                let _energy: f32 = data
-                                    .iter()
-                                    .map(|&s| (s as f32 - 32768.0) / 32768.0)
-                                    .sum::<f32>()
-                                    / data.len().max(1) as f32;
-                                let _ = _energy;
+                            if !is_recording_cb.load(Ordering::SeqCst) {
+                                return;
                             }
+                            let mono: Vec<f32> = data
+                                .chunks(channels as usize)
+                                .map(|frame| {
+                                    frame
+                                        .iter()
+                                        .map(|&s| (s as f32 - 32768.0) / 32768.0)
+                                        .sum::<f32>()
+                                        / channels as f32
+                                })
+                                .collect();
+                            let _ = audio_tx_cb.send(mono);
                         },
                         err_fn,
                         None,
@@ -156,10 +199,10 @@ impl AudioCapture {
 
             // Stream is dropped here, stopping audio
             drop(stream);
-        });
+        }));
 
         self.is_recording.store(true, Ordering::SeqCst);
-        Ok(())
+        Ok(audio_rx)
     }
 
     /// Stop recording

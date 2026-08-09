@@ -4,6 +4,7 @@
 
 import { useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
 import { Waveform } from '../Waveform';
 import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
@@ -33,12 +34,15 @@ function SegmentItem({
   reduceMotion: boolean;
   fontSize: number;
 }) {
+  const showToast = useAppStore((s) => s.showToast);
   const handleClick = useCallback(() => {
-    // Copy to clipboard on click
-    navigator.clipboard.writeText(segment.text).catch(() => {
+    // Copy to clipboard on click — m7 fix: visual feedback
+    navigator.clipboard.writeText(segment.text).then(() => {
+      showToast('已复制');
+    }).catch(() => {
       // Fallback: use Tauri clipboard or ignore
     });
-  }, [segment.text]);
+  }, [segment.text, showToast]);
 
   return (
     <motion.div
@@ -77,6 +81,7 @@ export function FloatingWindow() {
   const segments = useAppStore((s) => s.segments);
   const currentPartial = useAppStore((s) => s.currentPartial);
   const settings = useAppStore((s) => s.settings);
+  const toastMessage = useAppStore((s) => s.toastMessage);
   const setStatus = useAppStore((s) => s.setStatus);
 
   const isListening = status === 'listening';
@@ -109,8 +114,13 @@ export function FloatingWindow() {
             : 'rgba(255, 255, 255, 0.72)',
       }}
     >
-      {/* Header: status indicator + waveform */}
-      <div className="flex items-center gap-3 px-4 pt-3 pb-1">
+      {/* Header: status indicator + waveform — M13 fix: drag handle for window repositioning */}
+      <div
+        className="flex items-center gap-3 px-4 pt-3 pb-1 cursor-move"
+        onMouseDown={() => {
+          getCurrentWebviewWindow().startDragging().catch(() => {});
+        }}
+      >
         {/* Recording indicator */}
         <div className="flex items-center gap-2">
           <div
@@ -161,6 +171,18 @@ export function FloatingWindow() {
           ))}
         </AnimatePresence>
       </div>
+
+      {/* m7 fix: Toast notification for copy feedback */}
+      {toastMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-800/90 text-white text-xs rounded-full shadow-lg"
+        >
+          {toastMessage}
+        </motion.div>
+      )}
     </motion.div>
   );
 }

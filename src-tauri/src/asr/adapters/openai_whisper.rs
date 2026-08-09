@@ -38,17 +38,34 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
         self.ws_sender = Some(tx_audio);
         self.ws_receiver = Some(rx_result);
 
-        // Spawn WebSocket connection in background
-        let _api_key = config.api_key.clone().unwrap_or_default();
+        // Extract API key for authentication (C4 fix)
+        let api_key = config.api_key.clone().unwrap_or_default();
         let endpoint = config.endpoint.clone().unwrap_or_else(|| {
             "wss://api.openai.com/v1/audio/transcriptions".to_string()
         });
         let language = config.language.clone();
 
         tokio::spawn(async move {
-            match connect_async(endpoint.clone()).await {
+            // Build request with Authorization header for OpenAI authentication
+            let request = match http::Request::builder()
+                .uri(endpoint.clone())
+                .header("Authorization", format!("Bearer {}", api_key))
+                .header("OpenAI-Beta", "realtime-v1")
+                .body(())
+            {
+                Ok(req) => req,
+                Err(e) => {
+                    log::error!("Failed to build WS request: {}", e);
+                    return;
+                }
+            };
+
+            match connect_async(request).await {
                 Ok((mut ws_stream, _)) => {
                     log::info!("Connected to OpenAI Whisper WebSocket");
+
+                    // M8 fix: Keepalive ping interval to prevent NAT timeout
+                    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
                     loop {
                         tokio::select! {
@@ -62,6 +79,12 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
                                     })
                                     .collect();
                                 if ws_stream.send(tokio_tungstenite::tungstenite::Message::Binary(pcm_bytes)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            _ = ping_interval.tick() => {
+                                // M8 fix: Send ping to keep connection alive
+                                if ws_stream.send(tokio_tungstenite::tungstenite::Message::Ping(vec![])).await.is_err() {
                                     break;
                                 }
                             }

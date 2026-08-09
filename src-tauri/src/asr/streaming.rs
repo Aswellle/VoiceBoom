@@ -71,8 +71,9 @@ impl AsrManager {
     }
 
     /// Close the current engine
-    pub async fn close(&mut self) -> anyhow::Result<()> {
-        if let Some(engine) = self.engine.take() {
+    /// M7 fix: Use &self with inner Arc<Mutex<>> so it's callable from Tauri State
+    pub async fn close(&self) -> anyhow::Result<()> {
+        if let Some(engine) = &self.engine {
             let mut eng = engine.lock().await;
             eng.close().await?;
         }

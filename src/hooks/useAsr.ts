@@ -1,8 +1,9 @@
 // useASR hook — manages ASR engine lifecycle and recognition flow
 // Connects to Tauri backend for audio capture and streaming recognition
 
-import { useEffect, useRef, useCallback } from 'react';
-import { listen, emit } from '@tauri-apps/api/event';
+import { useEffect, useRef, useCallback, useState } from 'react';
+import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../stores/useAppStore';
 
 /// ASR event payload from Rust backend
@@ -23,6 +24,7 @@ interface UseAsrReturn {
 export function useAsr(): UseAsrReturn {
   const { setStatus, addSegment, updatePartial, settings } = useAppStore();
   const isListeningRef = useRef(false);
+  const [isListening, setIsListening] = useState(false);
   const audioLevelInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Listen for ASR results from Rust backend
@@ -57,25 +59,24 @@ export function useAsr(): UseAsrReturn {
   const startListening = useCallback(async () => {
     if (isListeningRef.current) return;
     isListeningRef.current = true;
+    setIsListening(true);
     setStatus('listening');
 
     try {
-      // Emit event to trigger Rust audio capture
-      await emit('recording:start', {
+      // Invoke Tauri command to start recording with ASR config
+      await invoke('start_recording', {
         engine: settings.engine,
         language: settings.language,
         apiKey: settings.apiKey,
         endpoint: settings.endpoint,
       });
 
-      // Simulate audio level updates (in production, this comes from Rust)
-      audioLevelInterval.current = setInterval(() => {
-        const level = Math.random() * 0.7 + 0.3;
-        useAppStore.getState().setAudioLevel(level);
-      }, 100);
+      // m8 fix: Audio level now comes from Rust via 'audio:level' events
+      // No frontend simulation needed
     } catch (error) {
       console.error('Failed to start recording:', error);
       isListeningRef.current = false;
+      setIsListening(false);
       setStatus('idle');
     }
   }, [setStatus, settings]);
@@ -84,6 +85,7 @@ export function useAsr(): UseAsrReturn {
   const stopListening = useCallback(async () => {
     if (!isListeningRef.current) return;
     isListeningRef.current = false;
+    setIsListening(false);
 
     if (audioLevelInterval.current) {
       clearInterval(audioLevelInterval.current);
@@ -94,7 +96,7 @@ export function useAsr(): UseAsrReturn {
     useAppStore.getState().setAudioLevel(0);
 
     try {
-      await emit('recording:stop', {});
+      await invoke('stop_recording');
     } catch (error) {
       console.error('Failed to stop recording:', error);
     }
@@ -110,6 +112,6 @@ export function useAsr(): UseAsrReturn {
   return {
     startListening,
     stopListening,
-    isListening: isListeningRef.current,
+    isListening,
   };
 }

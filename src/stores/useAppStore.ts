@@ -2,6 +2,7 @@
 // Manages recording state, recognition results, settings, and UI state
 
 import { create } from 'zustand';
+import { invoke } from '@tauri-apps/api/core';
 
 /// Recognition result segment
 export interface RecognitionSegment {
@@ -76,11 +77,17 @@ interface AppState {
   // Audio level (for waveform visualization)
   audioLevel: number;
   setAudioLevel: (level: number) => void;
+
+  // Toast notification (m7 fix)
+  toastMessage: string;
+  showToast: (message: string) => void;
 }
 
-/// Generate a simple unique ID (no external deps)
+// m5 fix: Monotonic counter for unique IDs (avoids millisecond collision)
+let idCounter = 0;
 function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
+  idCounter += 1;
+  return Date.now().toString(36) + '-' + idCounter.toString(36);
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
@@ -108,10 +115,10 @@ export const useAppStore = create<AppState>((set, get) => ({
       const allText = state.segments.map((s) => s.text).join('');
       if (allText.length <= maxChars) return {};
 
-      // Remove oldest segments until under limit
+      // m6 fix: Remove oldest segments until under limit (allow removing all but keep at least 1)
       const newSegments = [...state.segments];
       let currentLength = allText.length;
-      while (currentLength > maxChars && newSegments.length > 1) {
+      while (currentLength > maxChars && newSegments.length > 0) {
         const removed = newSegments.shift();
         if (removed) currentLength -= removed.text.length;
       }
@@ -123,9 +130,43 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: DEFAULT_SETTINGS,
   updateSettings: (partial) => {
     set((state) => ({ settings: { ...state.settings, ...partial } }));
+    // M3 fix: Persist settings to database
+    const newSettings = get().settings;
+    Object.entries(partial).forEach(([key, value]) => {
+      invoke('save_settings', { key, value: String(value) }).catch((e) => {
+        console.error(`Failed to save setting ${key}:`, e);
+      });
+    });
     // Apply max chars if changed
     if (partial.maxChars !== undefined) {
       get().applyMaxChars(partial.maxChars);
+    }
+  },
+  // M3 fix: Load settings from database on startup
+  loadSettings: async () => {
+    try {
+      const stored = await invoke<Record<string, string>>('get_settings');
+      const partial: Partial<AppSettings> = {};
+      for (const [key, value] of Object.entries(stored)) {
+        switch (key) {
+          case 'language': partial.language = value; break;
+          case 'maxChars': partial.maxChars = parseInt(value, 10) || 80; break;
+          case 'engine': partial.engine = value as AsrEngineType; break;
+          case 'apiKey': partial.apiKey = value; break;
+          case 'endpoint': partial.endpoint = value; break;
+          case 'shortcut': partial.shortcut = value; break;
+          case 'fontSize': partial.fontSize = parseInt(value, 10) || 22; break;
+          case 'opacity': partial.opacity = parseFloat(value) || 1; break;
+          case 'theme': partial.theme = value as 'auto' | 'light' | 'dark'; break;
+          case 'reduceMotion': partial.reduceMotion = value === 'true'; break;
+          case 'autoStart': partial.autoStart = value === 'true'; break;
+        }
+      }
+      if (Object.keys(partial).length > 0) {
+        set((state) => ({ settings: { ...state.settings, ...partial } }));
+      }
+    } catch (e) {
+      console.error('Failed to load settings:', e);
     }
   },
   resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
@@ -139,4 +180,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Audio level
   audioLevel: 0,
   setAudioLevel: (level) => set({ audioLevel: level }),
+
+  // Toast notification (m7 fix)
+  toastMessage: '',
+  showToast: (message) => {
+    set({ toastMessage: message });
+    setTimeout(() => set({ toastMessage: '' }), 2000);
+  },
 }));

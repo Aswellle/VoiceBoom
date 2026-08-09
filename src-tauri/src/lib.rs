@@ -35,7 +35,8 @@ impl AppState {
 /// Run the VoiceBoom application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    env_logger::init();
+    // m11 fix: Use try_init to avoid panic if logger already initialized
+    let _ = env_logger::try_init();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -53,6 +54,7 @@ pub fn run() {
             commands::register_shortcut,
             commands::unregister_shortcut,
             commands::get_audio_devices,
+            commands::open_settings,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -74,6 +76,10 @@ pub fn run() {
             // Initialize audio capture
             let audio = AudioCapture::new();
             *app.state::<AppState>().audio_capture.lock().unwrap() = Some(audio);
+
+            // C6 fix: Initialize shortcut manager
+            let shortcut_manager = GlobalShortcutManager::new(handle.clone());
+            *app.state::<AppState>().shortcut_manager.lock().unwrap() = Some(shortcut_manager);
 
             log::info!("VoiceBoom initialized successfully");
             Ok(())

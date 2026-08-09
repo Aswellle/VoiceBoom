@@ -38,7 +38,8 @@ impl StreamingAsrEngine for DeepgramAdapter {
         self.ws_sender = Some(tx_audio);
         self.ws_receiver = Some(rx_result);
 
-        let _api_key = config.api_key.clone().unwrap_or_default();
+        // C5 fix: Extract API key and use it for authentication
+        let api_key = config.api_key.clone().unwrap_or_default();
         let endpoint = config.endpoint.clone().unwrap_or_else(|| {
             "wss://api.deepgram.com/v1/listen".to_string()
         });
@@ -46,16 +47,27 @@ impl StreamingAsrEngine for DeepgramAdapter {
         let sample_rate = config.sample_rate;
 
         tokio::spawn(async move {
-            // Build Deepgram WebSocket URL with query params
-            let url_str = format!(
-                "{}?encoding=linear16&sample_rate={}&channels=1&language={}",
-                endpoint, sample_rate,
-                if language == "auto" { "en" } else { &language }
+            // Build Deepgram WebSocket URL with query params including token auth
+            let lang_param = if language == "auto" { "" } else { &language };
+            let mut url_str = format!(
+                "{}?encoding=linear16&sample_rate={}&channels=1",
+                endpoint, sample_rate
             );
+            // Add token for authentication (Deepgram supports query param auth)
+            if !api_key.is_empty() {
+                url_str.push_str(&format!("&token={}", api_key));
+            }
+            // Add language param if not auto (M9 fix: omit for auto-detect)
+            if !lang_param.is_empty() {
+                url_str.push_str(&format!("&language={}", lang_param));
+            }
 
-            match connect_async(url_str.clone()).await {
+            match connect_async(url_str).await {
                 Ok((mut ws_stream, _)) => {
                     log::info!("Connected to Deepgram WebSocket");
+
+                    // M8 fix: Keepalive ping interval to prevent NAT timeout
+                    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
                     loop {
                         tokio::select! {
@@ -77,6 +89,12 @@ impl StreamingAsrEngine for DeepgramAdapter {
                                     })
                                     .collect();
                                 if ws_stream.send(tokio_tungstenite::tungstenite::Message::Binary(pcm_bytes)).await.is_err() {
+                                    break;
+                                }
+                            }
+                            _ = ping_interval.tick() => {
+                                // M8 fix: Send ping to keep connection alive
+                                if ws_stream.send(tokio_tungstenite::tungstenite::Message::Ping(vec![])).await.is_err() {
                                     break;
                                 }
                             }

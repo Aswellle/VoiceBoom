@@ -3,7 +3,7 @@
 
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { useAppStore } from '../../stores/useAppStore';
+import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
 
 type TabId = 'voice' | 'model' | 'shortcuts' | 'display' | 'advanced' | 'about';
 
@@ -190,7 +190,7 @@ function ModelTab() {
       <Select
         label="ASR 引擎"
         value={settings.engine}
-        onChange={(v) => updateSettings({ engine: v as any })}
+        onChange={(v) => updateSettings({ engine: v as AsrEngineType })}
         options={[
           { value: 'openai_whisper', label: 'OpenAI Whisper API' },
           { value: 'deepgram', label: 'Deepgram' },
@@ -270,7 +270,7 @@ function DisplayTab() {
       <Select
         label="主题"
         value={settings.theme}
-        onChange={(v) => updateSettings({ theme: v as any })}
+        onChange={(v) => updateSettings({ theme: v as 'auto' | 'light' | 'dark' })}
         options={[
           { value: 'auto', label: '跟随系统' },
           { value: 'light', label: '亮色模式' },
