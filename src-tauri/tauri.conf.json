@@ -30,21 +30,6 @@
         "fullscreen": false,
         "resizable": true,
         "skipTaskbar": true
-      },
-      {
-        "title": "VoiceBoom Settings",
-        "label": "settings",
-        "width": 720,
-        "height": 560,
-        "minWidth": 600,
-        "minHeight": 480,
-        "decorations": true,
-        "alwaysOnTop": false,
-        "transparent": false,
-        "center": true,
-        "visible": false,
-        "fullscreen": false,
-        "resizable": true
       }
     ],
     "security": {

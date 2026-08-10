@@ -5,6 +5,7 @@ use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::audio::vad::{VadConfig, VoiceActivityDetector};
 use crate::resources;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::Listener;
 
 /// Parse engine type string to enum
 fn parse_engine_type(engine: &str) -> AsrEngineType {
@@ -270,9 +271,14 @@ pub fn get_resource_status(state: State<'_, AppState>) -> Result<Vec<serde_json:
                     "channel_name": p.channel.display_name(),
                     "is_bundled": p.is_bundled,
                     "is_ready": p.is_ready,
+                    "server_binary_exists": p.server_binary_exists,
+                    "model_file_exists": p.model_file_exists,
+                    "vad_model_exists": p.vad_model_exists,
                     "size_bytes": p.size_bytes,
                     "updated_at": p.updated_at,
                     "path": p.path.to_string_lossy(),
+                    "default_model_filename": p.engine.default_model_filename(),
+                    "endpoint": p.engine.default_endpoint(),
                 })
             })
             .collect();
@@ -282,54 +288,11 @@ pub fn get_resource_status(state: State<'_, AppState>) -> Result<Vec<serde_json:
     }
 }
 
-/// Install a resource package from a user-provided path
-#[tauri::command]
-pub fn install_resource(
-    state: State<'_, AppState>,
-    engine: String,
-    source_path: String,
-    version: String,
-    channel: String,
-) -> Result<serde_json::Value, String> {
-    let mut guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
-    if let Some(manager) = guard.as_mut() {
-        let engine_type = resources::ResourceEngine::from_str(&engine)
-            .ok_or_else(|| format!("Unknown engine: {}", engine))?;
-        let channel_type = resources::VersionChannel::from_str(&channel)
-            .unwrap_or(resources::VersionChannel::Stable);
-        let path = std::path::PathBuf::from(&source_path);
-        let info = manager.install_package(engine_type, &path, &version, channel_type)
-            .map_err(|e| e.to_string())?;
-        Ok(serde_json::json!({
-            "engine": info.engine.as_str(),
-            "version": info.version,
-            "is_ready": info.is_ready,
-            "size_bytes": info.size_bytes,
-        }))
-    } else {
-        Err("Resource manager not initialized".to_string())
-    }
-}
-
-/// Remove a resource package
-#[tauri::command]
-pub fn remove_resource(state: State<'_, AppState>, engine: String) -> Result<(), String> {
-    let mut guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
-    if let Some(manager) = guard.as_mut() {
-        let engine_type = resources::ResourceEngine::from_str(&engine)
-            .ok_or_else(|| format!("Unknown engine: {}", engine))?;
-        manager.remove_package(engine_type).map_err(|e| e.to_string())
-    } else {
-        Err("Resource manager not initialized".to_string())
-    }
-}
-
-/// Start a local ASR server
+/// Start a local ASR server (auto-detects binary and model paths)
 #[tauri::command]
 pub fn start_local_server(
     state: State<'_, AppState>,
     engine: String,
-    model_path: String,
     language: Option<String>,
 ) -> Result<String, String> {
     let server_guard = state.server_manager.lock().map_err(|e| e.to_string())?;
@@ -341,21 +304,35 @@ pub fn start_local_server(
     let engine_type = resources::ResourceEngine::from_str(&engine)
         .ok_or_else(|| format!("Unknown engine: {}", engine))?;
 
-    let config = resources::server::ServerConfig {
-        engine: engine_type,
-        host: "127.0.0.1".to_string(),
-        port: match engine_type {
-            resources::ResourceEngine::WhisperCpp => 8080,
-            resources::ResourceEngine::FunASR => 9880,
-        },
-        model_path: std::path::PathBuf::from(&model_path),
-        vad_model_path: None,
-        language: language.unwrap_or_else(|| "auto".to_string()),
-        threads: num_cpus::get() as u32,
+    // Auto-detect server binary
+    let server_binary = resource_manager.server_binary_path(engine_type)
+        .ok_or_else(|| format!("Server binary not found for {}. Please ensure resources are extracted.", engine))?;
+
+    // Auto-detect model path
+    let model_path = resource_manager.model_path(engine_type)
+        .ok_or_else(|| format!("Model file not found for {}. Please download the model file to the models directory.", engine))?;
+
+    // Auto-detect VAD model path
+    let vad_model_path = resource_manager.vad_model_path(engine_type);
+
+    let port = match engine_type {
+        resources::ResourceEngine::WhisperCpp => 8080,
+        resources::ResourceEngine::FunASR => 9880,
     };
 
-    server_manager.start_server(config, resource_manager)
-        .map_err(|e| e.to_string())
+    let threads = std::thread::available_parallelism()
+        .map(|n| n.get() as u32)
+        .unwrap_or(4);
+
+    server_manager.start_server(
+        engine_type,
+        server_binary,
+        model_path,
+        vad_model_path,
+        &language.unwrap_or_else(|| "auto".to_string()),
+        port,
+        threads,
+    ).map_err(|e| e.to_string())
 }
 
 /// Stop a local ASR server
@@ -384,44 +361,45 @@ pub fn is_server_running(state: State<'_, AppState>, engine: String) -> Result<b
 
 /// Get the default endpoint for a local engine
 #[tauri::command]
-pub fn get_resource_endpoint(state: State<'_, AppState>, engine: String) -> Result<String, String> {
-    let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
-    if let Some(manager) = guard.as_ref() {
-        let engine_type = resources::ResourceEngine::from_str(&engine)
-            .ok_or_else(|| format!("Unknown engine: {}", engine))?;
-        Ok(manager.get_endpoint(engine_type))
-    } else {
-        Err("Resource manager not initialized".to_string())
-    }
+pub fn get_resource_endpoint(engine: String) -> Result<String, String> {
+    let engine_type = resources::ResourceEngine::from_str(&engine)
+        .ok_or_else(|| format!("Unknown engine: {}", engine))?;
+    Ok(engine_type.default_endpoint().to_string())
 }
 
-/// M10 fix: Open the settings window
+/// Open the settings window (creates it programmatically on demand)
 #[tauri::command]
-pub fn open_settings(app_handle: AppHandle) -> Result<(), String> {
-    log::info!("open_settings command called");
+pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), String> {
+    use tauri::WebviewWindowBuilder;
 
-    // Get all window labels for debugging
-    let windows = app_handle.webview_windows();
-    let labels: Vec<&str> = windows.keys().map(|k| k.as_str()).collect();
-    log::info!("Available windows: {:?}", labels);
-
+    // Check if settings window already exists
     if let Some(window) = app_handle.get_webview_window("settings") {
-        log::info!("Found settings window, showing...");
-        window.show().map_err(|e| {
-            let msg = format!("Failed to show settings window: {}", e);
-            log::error!("{}", msg);
-            msg
-        })?;
-        window.set_focus().map_err(|e| {
-            let msg = format!("Failed to focus settings window: {}", e);
-            log::error!("{}", msg);
-            msg
-        })?;
-        log::info!("Settings window shown successfully");
-        Ok(())
-    } else {
-        let msg = format!("Settings window not found. Available windows: {:?}", labels);
-        log::error!("{}", msg);
-        Err(msg)
+        // Window exists - just show and focus it
+        window.show().map_err(|e| format!("Failed to show settings: {}", e))?;
+        window.set_focus().map_err(|e| format!("Failed to focus settings: {}", e))?;
+        // Also bring to front on Windows
+        window.set_always_on_top(true).ok();
+        window.set_always_on_top(false).ok();
+        return Ok(());
     }
+
+    // Create the settings window programmatically
+    let settings_window = WebviewWindowBuilder::new(
+        &app_handle,
+        "settings",
+        tauri::WebviewUrl::App("index.html".into()),
+    )
+    .title("VoiceBoom Settings")
+    .inner_size(720.0, 560.0)
+    .min_inner_size(600.0, 480.0)
+    .center()
+    .resizable(true)
+    .decorations(true)
+    .build()
+    .map_err(|e| format!("Failed to create settings window: {}", e))?;
+
+    settings_window.show().map_err(|e| format!("Failed to show settings: {}", e))?;
+    settings_window.set_focus().map_err(|e| format!("Failed to focus settings: {}", e))?;
+
+    Ok(())
 }

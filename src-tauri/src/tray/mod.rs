@@ -7,6 +7,7 @@ use tauri::{
     AppHandle, Manager,
 };
 use tauri::Emitter;
+use crate::commands;
 
 // Use the Wry runtime type alias from tauri
 type Runtime = tauri::Wry;
@@ -103,10 +104,8 @@ fn handle_menu_event(app: &AppHandle<Runtime>, event: tauri::menu::MenuEvent) {
 
         // Settings & About
         "open_settings" => {
-            if let Some(window) = app.get_webview_window("settings") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            let app_handle = app.clone();
+            let _ = commands::open_settings(app_handle);
         }
         "about" => {
             let _ = app.emit("show-about", ());
@@ -138,11 +137,8 @@ fn handle_tray_event(tray: &TrayIcon<Runtime>, event: TrayIconEvent) {
             ..
         } => {
             // Double-click opens settings
-            let app = tray.app_handle();
-            if let Some(window) = app.get_webview_window("settings") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
+            let app_handle = tray.app_handle().clone();
+            let _ = commands::open_settings(app_handle);
         }
         _ => {}
     }

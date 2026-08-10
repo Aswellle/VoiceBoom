@@ -1,6 +1,6 @@
 // Local ASR Resource Manager
-// Manages bundled and downloaded resource packages for Whisper.cpp and FunASR
-// Supports version channels (stable/preview) and update mechanisms
+// Manages bundled server binaries and downloaded model files
+// Server binaries are bundled with the app; models are downloaded separately
 
 pub mod server;
 
@@ -35,6 +35,38 @@ impl ResourceEngine {
             "whisper_cpp" => Some(ResourceEngine::WhisperCpp),
             "funasr" => Some(ResourceEngine::FunASR),
             _ => None,
+        }
+    }
+
+    /// Get the server binary name for this engine
+    pub fn server_binary_name(&self) -> &'static str {
+        match self {
+            ResourceEngine::WhisperCpp => "whisper-server.exe",
+            ResourceEngine::FunASR => "llama-funasr-sensevoice.exe",
+        }
+    }
+
+    /// Get the default WebSocket endpoint
+    pub fn default_endpoint(&self) -> &'static str {
+        match self {
+            ResourceEngine::WhisperCpp => "ws://127.0.0.1:8080",
+            ResourceEngine::FunASR => "ws://127.0.0.1:9880",
+        }
+    }
+
+    /// Get the default model file name
+    pub fn default_model_filename(&self) -> &'static str {
+        match self {
+            ResourceEngine::WhisperCpp => "ggml-base.bin",
+            ResourceEngine::FunASR => "sensevoice-small-q8.gguf",
+        }
+    }
+
+    /// Get the VAD model file name
+    pub fn vad_model_filename(&self) -> Option<&'static str> {
+        match self {
+            ResourceEngine::WhisperCpp => None,
+            ResourceEngine::FunASR => Some("fsmn-vad.gguf"),
         }
     }
 }
@@ -73,217 +105,148 @@ impl VersionChannel {
 /// Information about a resource package
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResourcePackageInfo {
-    /// Engine type
     pub engine: ResourceEngine,
-    /// Version string (e.g., "1.0.0")
     pub version: String,
-    /// Version channel
     pub channel: VersionChannel,
-    /// Installation path
     pub path: PathBuf,
-    /// Whether this is a bundled resource
     pub is_bundled: bool,
-    /// Package size in bytes
     pub size_bytes: u64,
-    /// Last updated timestamp
     pub updated_at: String,
-    /// Whether the package is ready to use
+    pub server_binary_exists: bool,
+    pub model_file_exists: bool,
+    pub vad_model_exists: bool,
     pub is_ready: bool,
 }
 
-/// Resource manager state
+/// Simple resource manager
 pub struct ResourceManager {
-    /// Base directory for all resources
     base_dir: PathBuf,
-    /// Installed packages
-    packages: HashMap<ResourceEngine, ResourcePackageInfo>,
 }
 
-use std::collections::HashMap;
-
 impl ResourceManager {
-    /// Create a new resource manager
     pub fn new(base_dir: PathBuf) -> Self {
-        let mut manager = Self {
-            base_dir,
-            packages: HashMap::new(),
-        };
-        manager.scan_packages();
-        manager
+        Self { base_dir }
     }
 
     /// Get the resource directory for an engine
-    fn engine_dir(&self, engine: ResourceEngine) -> PathBuf {
+    pub fn engine_dir(&self, engine: ResourceEngine) -> PathBuf {
         self.base_dir.join(engine.as_str())
     }
 
-    /// Scan for installed packages
-    pub fn scan_packages(&mut self) {
-        for engine in [ResourceEngine::WhisperCpp, ResourceEngine::FunASR] {
-            let dir = self.engine_dir(engine);
-            if dir.exists() {
-                let is_ready = self.check_package_ready(engine, &dir);
-                let size = self.dir_size(&dir);
-                let info = ResourcePackageInfo {
-                    engine,
-                    version: self.read_version(&dir),
-                    channel: VersionChannel::Stable, // Default
-                    path: dir.clone(),
-                    is_bundled: dir.join(".bundled").exists(),
-                    size_bytes: size,
-                    updated_at: self.read_updated_at(&dir),
-                    is_ready,
-                };
-                self.packages.insert(engine, info);
+    /// Get the models directory for an engine
+    pub fn models_dir(&self, engine: ResourceEngine) -> PathBuf {
+        self.engine_dir(engine).join("models")
+    }
+
+    /// Check if server binary exists
+    pub fn server_binary_path(&self, engine: ResourceEngine) -> Option<PathBuf> {
+        let dir = self.engine_dir(engine);
+        let binary = dir.join(engine.server_binary_name());
+        if binary.exists() {
+            Some(binary)
+        } else {
+            // Check Release/ subdirectory
+            let release = dir.join("Release").join(engine.server_binary_name());
+            if release.exists() {
+                Some(release)
+            } else {
+                None
             }
         }
     }
 
-    /// Check if a package is ready to use
-    fn check_package_ready(&self, engine: ResourceEngine, dir: &Path) -> bool {
-        match engine {
-            ResourceEngine::WhisperCpp => {
-                // Check for whisper.cpp server binary and model file
-                let server_binary = if cfg!(windows) {
-                    dir.join("whisper-server.exe")
-                } else {
-                    dir.join("whisper-server")
-                };
-                let model_file = dir.join("models");
-                server_binary.exists() && model_file.exists()
+    /// Get the model file path
+    pub fn model_path(&self, engine: ResourceEngine) -> Option<PathBuf> {
+        let models_dir = self.models_dir(engine);
+        let model_file = models_dir.join(engine.default_model_filename());
+        if model_file.exists() {
+            Some(model_file)
+        } else {
+            // Check for any .bin or .gguf file
+            if let Ok(entries) = std::fs::read_dir(&models_dir) {
+                for entry in entries.flatten() {
+                    let path = entry.path();
+                    if let Some(ext) = path.extension() {
+                        let ext = ext.to_string_lossy().to_lowercase();
+                        if ext == "bin" || ext == "gguf" {
+                            return Some(path);
+                        }
+                    }
+                }
             }
-            ResourceEngine::FunASR => {
-                // Check for FunASR server script and model files
-                let server_script = dir.join("server.py");
-                let model_dir = dir.join("models");
-                server_script.exists() && model_dir.exists()
-            }
+            None
         }
     }
 
-    /// Get the default server endpoint for an engine
-    pub fn get_endpoint(&self, engine: ResourceEngine) -> String {
-        match engine {
-            ResourceEngine::WhisperCpp => "ws://localhost:8080/ws".to_string(),
-            ResourceEngine::FunASR => "ws://localhost:9880/ws".to_string(),
+    /// Get the VAD model file path
+    pub fn vad_model_path(&self, engine: ResourceEngine) -> Option<PathBuf> {
+        let models_dir = self.models_dir(engine);
+        if let Some(vad_name) = engine.vad_model_filename() {
+            let vad_file = models_dir.join(vad_name);
+            if vad_file.exists() {
+                return Some(vad_file);
+            }
         }
+        None
     }
 
     /// Get package info for an engine
-    pub fn get_package(&self, engine: ResourceEngine) -> Option<&ResourcePackageInfo> {
-        self.packages.get(&engine)
-    }
-
-    /// Get all package info
-    pub fn get_all_packages(&self) -> Vec<&ResourcePackageInfo> {
-        self.packages.values().collect()
-    }
-
-    /// Install a resource package from a source path
-    pub fn install_package(
-        &mut self,
-        engine: ResourceEngine,
-        source_path: &Path,
-        version: &str,
-        channel: VersionChannel,
-    ) -> anyhow::Result<ResourcePackageInfo> {
-        let target_dir = self.engine_dir(engine);
-
-        // Create target directory if it doesn't exist
-        if target_dir.exists() {
-            std::fs::remove_dir_all(&target_dir)?;
-        }
-        std::fs::create_dir_all(&target_dir)?;
-
-        // Copy files from source to target
-        self.copy_dir_recursive(source_path, &target_dir)?;
-
-        // Write version file
-        let version_file = target_dir.join(".version");
-        std::fs::write(version_file, version)?;
-
-        // Write channel file
-        let channel_file = target_dir.join(".channel");
-        std::fs::write(channel_file, channel.as_str())?;
-
-        // Write updated_at file
-        let updated_file = target_dir.join(".updated_at");
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_secs();
-        std::fs::write(updated_file, now.to_string())?;
-
-        // Scan again to update state
-        self.scan_packages();
-
-        Ok(self.packages.get(&engine).unwrap().clone())
-    }
-
-    /// Remove a resource package
-    pub fn remove_package(&mut self, engine: ResourceEngine) -> anyhow::Result<()> {
+    pub fn get_package(&self, engine: ResourceEngine) -> Option<ResourcePackageInfo> {
         let dir = self.engine_dir(engine);
-        if dir.exists() {
-            std::fs::remove_dir_all(&dir)?;
-        }
-        self.packages.remove(&engine);
-        Ok(())
-    }
-
-    /// Get the command to start the local server
-    pub fn get_start_command(&self, engine: ResourceEngine) -> Option<Vec<String>> {
-        let package = self.packages.get(&engine)?;
-        if !package.is_ready {
+        if !dir.exists() {
             return None;
         }
 
-        match engine {
-            ResourceEngine::WhisperCpp => {
-                let server = package.path.join(if cfg!(windows) {
-                    "whisper-server.exe"
-                } else {
-                    "whisper-server"
-                });
-                let model = package.path.join("models");
-                Some(vec![
-                    server.to_str()?.to_string(),
-                    "--model".to_string(),
-                    model.to_str()?.to_string(),
-                    "--port".to_string(),
-                    "8080".to_string(),
-                ])
-            }
-            ResourceEngine::FunASR => {
-                let server = package.path.join("server.py");
-                Some(vec![
-                    "python".to_string(),
-                    server.to_str()?.to_string(),
-                    "--port".to_string(),
-                    "9880".to_string(),
-                ])
+        let server_binary_exists = self.server_binary_path(engine).is_some();
+        let model_file_exists = self.model_path(engine).is_some();
+        let vad_model_exists = self.vad_model_path(engine).is_some();
+
+        // Ready = server binary exists AND model file exists
+        let is_ready = server_binary_exists && model_file_exists;
+
+        Some(ResourcePackageInfo {
+            engine,
+            version: self.read_version(&dir),
+            channel: VersionChannel::Stable,
+            path: dir.clone(),
+            is_bundled: dir.join(".bundled").exists(),
+            size_bytes: self.dir_size(&dir),
+            updated_at: self.read_updated_at(&dir),
+            server_binary_exists,
+            model_file_exists,
+            vad_model_exists,
+            is_ready,
+        })
+    }
+
+    /// Get all package info
+    pub fn get_all_packages(&self) -> Vec<ResourcePackageInfo> {
+        let mut results = Vec::new();
+        for engine in [ResourceEngine::WhisperCpp, ResourceEngine::FunASR] {
+            if let Some(info) = self.get_package(engine) {
+                results.push(info);
             }
         }
+        results
+    }
+
+    /// Ensure models directory exists
+    pub fn ensure_models_dir(&self, engine: ResourceEngine) -> PathBuf {
+        let dir = self.models_dir(engine);
+        std::fs::create_dir_all(&dir).ok();
+        dir
     }
 
     // Helper methods
 
     fn read_version(&self, dir: &Path) -> String {
         let version_file = dir.join(".version");
-        std::fs::read_to_string(version_file).unwrap_or_else(|_| "unknown".to_string())
+        std::fs::read_to_string(version_file).unwrap_or_else(|_| "bundled".to_string())
     }
 
     fn read_updated_at(&self, dir: &Path) -> String {
         let file = dir.join(".updated_at");
-        let timestamp: u64 = std::fs::read_to_string(file)
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        if timestamp == 0 {
-            "unknown".to_string()
-        } else {
-            let datetime = std::time::UNIX_EPOCH + std::time::Duration::from_secs(timestamp);
-            format!("{:?}", datetime)
-        }
+        std::fs::read_to_string(file).unwrap_or_else(|_| "unknown".to_string())
     }
 
     fn dir_size(&self, dir: &Path) -> u64 {
@@ -301,25 +264,6 @@ impl ResourceManager {
         }
         size
     }
-
-    fn copy_dir_recursive(&self, src: &Path, dst: &Path) -> anyhow::Result<()> {
-        if !dst.exists() {
-            std::fs::create_dir_all(dst)?;
-        }
-        for entry in std::fs::read_dir(src)? {
-            let entry = entry?;
-            let file_type = entry.file_type()?;
-            let src_path = entry.path();
-            let dst_path = dst.join(entry.file_name());
-
-            if file_type.is_dir() {
-                self.copy_dir_recursive(&src_path, &dst_path)?;
-            } else {
-                std::fs::copy(&src_path, &dst_path)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 /// Get the default resource directory (in app data)
@@ -328,34 +272,42 @@ pub fn default_resource_dir(app_data_dir: &Path) -> PathBuf {
 }
 
 /// Copy bundled resources from app resources to app data directory
-/// This should be called on first launch to extract bundled server binaries
 pub fn ensure_bundled_resources(app: &tauri::AppHandle) -> anyhow::Result<()> {
     let app_data_dir = app.path().app_data_dir()?;
     let resource_dir = default_resource_dir(&app_data_dir);
     std::fs::create_dir_all(&resource_dir)?;
 
-    // Check if resources are already extracted
     let whisper_dir = resource_dir.join("whisper_cpp");
     let funasr_dir = resource_dir.join("funasr");
 
     // Get resource directory from app bundle
     let resource_dir_bundled = app.path().resource_dir()?;
 
-    // Copy whisper.cpp bundled resources
+    // Copy whisper.cpp bundled resources if not already extracted
     if !whisper_dir.exists() || is_dir_empty(&whisper_dir)? {
         let bundled = resource_dir_bundled.join("whisper_cpp");
         if bundled.exists() {
             copy_dir_all(&bundled, &whisper_dir)?;
-            log::info!("Extracted bundled whisper.cpp resources");
+            // Mark as bundled
+            std::fs::write(whisper_dir.join(".bundled"), b"1")?;
+            std::fs::write(whisper_dir.join(".version"), b"1.9.2")?;
+            log::info!("Extracted bundled whisper.cpp resources to {:?}", whisper_dir);
+        } else {
+            log::warn!("Bundled whisper.cpp not found at {:?}", bundled);
         }
     }
 
-    // Copy FunASR bundled resources
+    // Copy FunASR bundled resources if not already extracted
     if !funasr_dir.exists() || is_dir_empty(&funasr_dir)? {
         let bundled = resource_dir_bundled.join("funasr");
         if bundled.exists() {
             copy_dir_all(&bundled, &funasr_dir)?;
-            log::info!("Extracted bundled FunASR resources");
+            // Mark as bundled
+            std::fs::write(funasr_dir.join(".bundled"), b"1")?;
+            std::fs::write(funasr_dir.join(".version"), b"1.4.1")?;
+            log::info!("Extracted bundled FunASR resources to {:?}", funasr_dir);
+        } else {
+            log::warn!("Bundled FunASR not found at {:?}", bundled);
         }
     }
 

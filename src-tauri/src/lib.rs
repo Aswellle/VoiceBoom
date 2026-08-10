@@ -64,8 +64,6 @@ pub fn run() {
             commands::get_audio_devices,
             commands::open_settings,
             commands::get_resource_status,
-            commands::install_resource,
-            commands::remove_resource,
             commands::get_resource_endpoint,
             commands::start_local_server,
             commands::stop_local_server,
@@ -122,19 +120,6 @@ pub fn run() {
 
             log::info!("VoiceBoom initialized successfully");
             Ok(())
-        })
-        .on_window_event(|window, event| {
-            // Bug fix: Prevent settings window from being destroyed on close
-            // Instead, hide it so it can be reopened via tray or gear button
-            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
-                let label = window.label();
-                if label == "settings" {
-                    // Prevent the window from being destroyed
-                    api.prevent_close();
-                    // Hide the window instead
-                    let _ = window.hide();
-                }
-            }
         })
         .run(tauri::generate_context!())
         .expect("error while running VoiceBoom application");

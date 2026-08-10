@@ -331,33 +331,24 @@ function ModelTab() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {/* Local service endpoint */}
+            {/* Local engine - show status from resource manager */}
+            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-green-500" />
+                <span className="text-xs text-blue-700 font-medium">服务器程序已内置</span>
+              </div>
+              <p className="text-xs text-blue-600 mt-1">
+                请在「本地资源」标签页管理模型文件和启动服务。
+                模型文件下载后放到资源目录的 models 文件夹即可使用。
+              </p>
+            </div>
             <TextInput
               label="本地服务地址"
               value={settings.endpoint}
               onChange={(v) => updateSettings({ endpoint: v })}
               placeholder={currentEngine.endpointPlaceholder}
-              helpText="本地 WebSocket 服务地址"
+              helpText="本地 WebSocket 服务地址，默认无需修改"
             />
-            {/* Download link */}
-            {currentEngine.downloadUrl && (
-              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-amber-800">需要下载本地服务</p>
-                    <p className="text-xs text-amber-600 mt-0.5">{currentEngine.downloadHelp}</p>
-                  </div>
-                  <a
-                    href={currentEngine.downloadUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap"
-                  >
-                    前往下载
-                  </a>
-                </div>
-              </div>
-            )}
             <TextInput
               label="API Key"
               value={settings.apiKey}
@@ -373,10 +364,12 @@ function ModelTab() {
       {/* Connection status indicator */}
       <div className="border-t border-gray-200 pt-4">
         <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${settings.apiKey || currentEngine.isLocal ? 'bg-green-500' : 'bg-red-500'}`} />
+          <div className={`w-2 h-2 rounded-full ${!currentEngine.isLocal && settings.apiKey ? 'bg-green-500' : currentEngine.isLocal ? 'bg-blue-500' : 'bg-red-500'}`} />
           <span className="text-xs text-gray-500">
-            {settings.apiKey || currentEngine.isLocal
+            {!currentEngine.isLocal && settings.apiKey
               ? '已配置，可以开始语音识别'
+              : currentEngine.isLocal
+              ? '本地服务：请在「本地资源」标签页下载模型并启动服务器'
               : '请填写 API Key 后使用'}
           </span>
         </div>
@@ -503,40 +496,41 @@ function AboutTab() {
 /// Tab content: Local Resources management
 function LocalResourcesTab() {
   const [resources, setResources] = useState<any[]>([]);
-  const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
+  const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
 
-  useEffect(() => {
+  const refreshStatus = () => {
     invoke('get_resource_status').then((status) => {
       setResources(status as any[]);
-    }).catch(() => {});
-  }, []);
-
-  const handleInstall = async (engine: string) => {
-    // Use a simple prompt for the path (dialog plugin not available in this config)
-    const path = prompt(`请输入 ${engine} 资源包目录的完整路径:\n\n例如: C:\\VoiceBoom\\resources\\whisper_cpp`);
-    if (path && path.trim()) {
-      invoke('install_resource', {
-        engine,
-        sourcePath: path.trim(),
-        version: '1.0.0',
-        channel: 'stable',
-      }).then(() => {
-        // Refresh status
-        invoke('get_resource_status').then((status) => {
-          setResources(status as any[]);
-        });
-      }).catch((e) => {
-        alert('安装失败: ' + e);
+      // Also check server running status
+      const engines = ['whisper_cpp', 'funasr'];
+      engines.forEach((eng) => {
+        invoke('is_server_running', { engine: eng }).then((running) => {
+          setServerStatus((prev) => ({ ...prev, [eng]: running as boolean }));
+        }).catch(() => {});
       });
-    }
+    }).catch(() => {});
   };
 
-  const handleRemove = async (engine: string) => {
-    invoke('remove_resource', { engine }).then(() => {
-      invoke('get_resource_status').then((status) => {
-        setResources(status as any[]);
+  useEffect(() => {
+    refreshStatus();
+    const interval = setInterval(refreshStatus, 3000); // Auto-refresh every 3s
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleStartServer = async (engine: string) => {
+    invoke('start_local_server', { engine, language: 'auto' })
+      .then(() => {
+        refreshStatus();
+      })
+      .catch((e) => {
+        alert('启动服务器失败: ' + e);
       });
-    }).catch(() => {});
+  };
+
+  const handleStopServer = async (engine: string) => {
+    invoke('stop_local_server', { engine })
+      .then(() => refreshStatus())
+      .catch(() => {});
   };
 
   const formatSize = (bytes: number) => {
@@ -548,19 +542,22 @@ function LocalResourcesTab() {
   };
 
   const engines = [
-    { id: 'whisper_cpp', name: 'Whisper.cpp', description: '本地离线语音识别，支持多语言' },
-    { id: 'funasr', name: 'FunASR', description: '阿里达摩院中文语音识别，离线运行' },
+    { id: 'whisper_cpp', name: 'Whisper.cpp', description: '本地离线语音识别，支持多语言', modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp' },
+    { id: 'funasr', name: 'FunASR', description: '阿里达摩院中文语音识别，离线运行', modelUrl: 'https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF' },
   ];
 
   return (
     <div className="flex flex-col gap-4">
       <p className="text-sm text-gray-500">
-        管理本地语音识别服务的资源包。资源包包含运行本地推理所需的模型文件和服务器程序。
+        管理本地语音识别服务。服务器程序已内置，需要下载模型文件后才能使用。
       </p>
 
       {engines.map((engine) => {
         const resource = resources.find((r) => r.engine === engine.id);
         const isReady = resource?.is_ready;
+        const serverRunning = serverStatus[engine.id];
+        const serverBinaryExists = resource?.server_binary_exists;
+        const modelExists = resource?.model_file_exists;
 
         return (
           <div key={engine.id} className="p-4 rounded-lg border border-gray-200 bg-white">
@@ -571,45 +568,71 @@ function LocalResourcesTab() {
               </div>
               {isReady ? (
                 <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">已就绪</span>
+              ) : serverBinaryExists ? (
+                <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full">需模型</span>
               ) : (
                 <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-full">未安装</span>
               )}
             </div>
 
-            {resource && isReady && (
+            {/* Status details */}
+            {resource && (
               <div className="mt-3 pt-3 border-t border-gray-100">
-                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                  <div>版本: <span className="text-gray-700">{resource.version}</span></div>
-                  <div>大小: <span className="text-gray-700">{formatSize(resource.size_bytes)}</span></div>
-                  <div>通道: <span className="text-gray-700">{resource.channel_name}</span></div>
-                  <div>路径: <span className="text-gray-700 truncate block" title={resource.path}>{resource.path}</span></div>
+                <div className="grid grid-cols-2 gap-2 text-xs">
+                  <div className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${serverBinaryExists ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">服务器程序</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${modelExists ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">模型文件</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className={`w-2 h-2 rounded-full ${serverRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">{serverRunning ? '运行中' : '已停止'}</span>
+                  </div>
+                  <div className="text-gray-500">
+                    大小: <span className="text-gray-700">{formatSize(resource.size_bytes)}</span>
+                  </div>
                 </div>
               </div>
             )}
 
-            <div className="mt-3 flex gap-2">
-              {!isReady ? (
-                <button
-                  onClick={() => handleInstall(engine.id)}
-                  className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+            {/* Model download guidance */}
+            {serverBinaryExists && !modelExists && (
+              <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <p className="text-xs text-amber-800 font-medium">需要下载模型文件</p>
+                <p className="text-xs text-amber-600 mt-1">
+                  将模型文件放到: <code className="bg-amber-100 px-1 rounded">{resource?.path}\models\{resource?.default_model_filename}</code>
+                </p>
+                <a
+                  href={engine.modelUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-block mt-2 px-3 py-1 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors"
                 >
-                  安装资源包...
+                  前往下载模型
+                </a>
+              </div>
+            )}
+
+            {/* Action buttons */}
+            <div className="mt-3 flex gap-2">
+              {isReady && !serverRunning && (
+                <button
+                  onClick={() => handleStartServer(engine.id)}
+                  className="px-3 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 transition-colors"
+                >
+                  启动服务器
                 </button>
-              ) : (
-                <>
-                  <button
-                    onClick={() => handleInstall(engine.id)}
-                    className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    更新/更换
-                  </button>
-                  <button
-                    onClick={() => handleRemove(engine.id)}
-                    className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100 transition-colors"
-                  >
-                    卸载
-                  </button>
-                </>
+              )}
+              {serverRunning && (
+                <button
+                  onClick={() => handleStopServer(engine.id)}
+                  className="px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
+                >
+                  停止服务器
+                </button>
               )}
             </div>
           </div>
@@ -618,8 +641,8 @@ function LocalResourcesTab() {
 
       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
         <p className="text-xs text-blue-600">
-          💡 提示：安装资源包时，请选择包含服务器程序和模型文件的目录。
-          后续版本将支持在线下载和版本通道选择（稳定版/前瞻版）。
+          💡 提示：服务器程序已内置在应用中，首次启动会自动解压。
+          模型文件需要单独下载并放到对应目录的 models 文件夹中。
         </p>
       </div>
     </div>
