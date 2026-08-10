@@ -271,7 +271,14 @@ pub fn default_resource_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("resources")
 }
 
-/// Copy bundled resources from app resources to app data directory
+/// Embedded resource ZIPs (compiled into the binary at build time)
+/// This ensures the server binaries are truly built-in and work
+/// regardless of where the EXE is located.
+pub const EMBEDDED_WHISPER_ZIP: &[u8] = include_bytes!("../../embedded_resources/whisper_cpp.zip");
+pub const EMBEDDED_FUNASR_ZIP: &[u8] = include_bytes!("../../embedded_resources/funasr.zip");
+
+/// Extract bundled resources from embedded ZIPs to the app data directory
+/// This is called on every launch - it only extracts if not already present.
 pub fn ensure_bundled_resources(app: &tauri::AppHandle) -> anyhow::Result<()> {
     let app_data_dir = app.path().app_data_dir()?;
     let resource_dir = default_resource_dir(&app_data_dir);
@@ -280,56 +287,72 @@ pub fn ensure_bundled_resources(app: &tauri::AppHandle) -> anyhow::Result<()> {
     let whisper_dir = resource_dir.join("whisper_cpp");
     let funasr_dir = resource_dir.join("funasr");
 
-    // Get resource directory from app bundle
-    let resource_dir_bundled = app.path().resource_dir()?;
-
-    // Copy whisper.cpp bundled resources if not already extracted
-    if !whisper_dir.exists() || is_dir_empty(&whisper_dir)? {
-        let bundled = resource_dir_bundled.join("whisper_cpp");
-        if bundled.exists() {
-            copy_dir_all(&bundled, &whisper_dir)?;
-            // Mark as bundled
-            std::fs::write(whisper_dir.join(".bundled"), b"1")?;
-            std::fs::write(whisper_dir.join(".version"), b"1.9.2")?;
-            log::info!("Extracted bundled whisper.cpp resources to {:?}", whisper_dir);
-        } else {
-            log::warn!("Bundled whisper.cpp not found at {:?}", bundled);
-        }
+    // Extract whisper.cpp if not already present
+    if !is_server_extracted(&whisper_dir) {
+        log::info!("Extracting bundled whisper.cpp resources ({} bytes)...", EMBEDDED_WHISPER_ZIP.len());
+        extract_zip_to(EMBEDDED_WHISPER_ZIP, &whisper_dir)?;
+        std::fs::write(whisper_dir.join(".bundled"), b"1")?;
+        std::fs::write(whisper_dir.join(".version"), b"1.9.2")?;
+        std::fs::create_dir_all(whisper_dir.join("models")).ok();
+        log::info!("Extracted whisper.cpp to {:?}", whisper_dir);
     }
 
-    // Copy FunASR bundled resources if not already extracted
-    if !funasr_dir.exists() || is_dir_empty(&funasr_dir)? {
-        let bundled = resource_dir_bundled.join("funasr");
-        if bundled.exists() {
-            copy_dir_all(&bundled, &funasr_dir)?;
-            // Mark as bundled
-            std::fs::write(funasr_dir.join(".bundled"), b"1")?;
-            std::fs::write(funasr_dir.join(".version"), b"1.4.1")?;
-            log::info!("Extracted bundled FunASR resources to {:?}", funasr_dir);
-        } else {
-            log::warn!("Bundled FunASR not found at {:?}", bundled);
-        }
+    // Extract FunASR if not already present
+    if !is_server_extracted(&funasr_dir) {
+        log::info!("Extracting bundled FunASR resources ({} bytes)...", EMBEDDED_FUNASR_ZIP.len());
+        extract_zip_to(EMBEDDED_FUNASR_ZIP, &funasr_dir)?;
+        std::fs::write(funasr_dir.join(".bundled"), b"1")?;
+        std::fs::write(funasr_dir.join(".version"), b"1.4.1")?;
+        std::fs::create_dir_all(funasr_dir.join("models")).ok();
+        log::info!("Extracted FunASR to {:?}", funasr_dir);
     }
 
     Ok(())
 }
 
-fn is_dir_empty(dir: &Path) -> anyhow::Result<bool> {
-    Ok(std::fs::read_dir(dir)?.next().is_none())
+/// Check if server resources have been extracted
+fn is_server_extracted(dir: &Path) -> bool {
+    if !dir.exists() {
+        return false;
+    }
+    // Check for the server binary marker file
+    dir.join(".bundled").exists()
 }
 
-fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
-    if !dst.exists() {
-        std::fs::create_dir_all(dst)?;
-    }
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let ty = entry.file_type()?;
-        if ty.is_dir() {
-            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
-        } else {
-            std::fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
+/// Extract a ZIP byte array to a destination directory
+fn extract_zip_to(zip_data: &[u8], dest: &Path) -> anyhow::Result<()> {
+    use std::io::Read;
+
+    let cursor = std::io::Cursor::new(zip_data);
+    let mut archive = zip::ZipArchive::new(cursor)
+        .map_err(|e| anyhow::anyhow!("Failed to open embedded ZIP: {}", e))?;
+
+    std::fs::create_dir_all(dest)?;
+
+    for i in 0..archive.len() {
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| anyhow::anyhow!("Failed to read ZIP entry {}: {}", i, e))?;
+
+        // Skip directories
+        if file.is_dir() {
+            continue;
         }
+
+        let file_name = match file.enclosed_name() {
+            Some(name) => name,
+            None => continue, // Skip files with unsafe paths
+        };
+
+        let out_path = dest.join(file_name);
+        if let Some(parent) = out_path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        let mut buffer = Vec::new();
+        file.read_to_end(&mut buffer)?;
+        std::fs::write(&out_path, buffer)?;
     }
+
     Ok(())
 }

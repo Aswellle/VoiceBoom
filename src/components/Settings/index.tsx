@@ -533,6 +533,24 @@ function LocalResourcesTab() {
       .catch(() => {});
   };
 
+  const handleInstallModel = async (engine: string, engineName: string) => {
+    const path = prompt(
+      `请输入 ${engineName} 模型文件的完整路径:\n\n` +
+      `支持指定模型文件，或指定包含模型的目录。\n\n` +
+      `例如: C:\\models\\ggml-base.bin`
+    );
+    if (path && path.trim()) {
+      invoke('install_model', { engine, modelPath: path.trim() })
+        .then(() => {
+          alert(`${engineName} 模型安装成功！`);
+          refreshStatus();
+        })
+        .catch((e) => {
+          alert('模型安装失败: ' + e);
+        });
+    }
+  };
+
   const formatSize = (bytes: number) => {
     if (bytes === 0) return '0 B';
     const k = 1024;
@@ -601,18 +619,29 @@ function LocalResourcesTab() {
             {/* Model download guidance */}
             {serverBinaryExists && !modelExists && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-xs text-amber-800 font-medium">需要下载模型文件</p>
+                <p className="text-xs text-amber-800 font-medium">需要安装模型文件</p>
                 <p className="text-xs text-amber-600 mt-1">
-                  将模型文件放到: <code className="bg-amber-100 px-1 rounded">{resource?.path}\models\{resource?.default_model_filename}</code>
+                  需要下载 <b>{resource?.default_model_filename}</b> 并安装后才能使用。
                 </p>
-                <a
-                  href={engine.modelUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-block mt-2 px-3 py-1 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors"
-                >
-                  前往下载模型
-                </a>
+                <div className="mt-2 flex gap-2">
+                  <button
+                    onClick={() => handleInstallModel(engine.id, engine.name)}
+                    className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                  >
+                    从本地路径安装模型
+                  </button>
+                  <a
+                    href={engine.modelUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-block px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors"
+                  >
+                    前往下载模型
+                  </a>
+                </div>
+                <p className="text-xs text-amber-500 mt-2">
+                  安装后模型将保存到: <code className="bg-amber-100 px-1 rounded">{resource?.path}\models\</code>
+                </p>
               </div>
             )}
 

@@ -359,6 +359,57 @@ pub fn is_server_running(state: State<'_, AppState>, engine: String) -> Result<b
     Ok(server_manager.is_running(engine_type))
 }
 
+/// Install a model file into the models directory for a local engine
+#[tauri::command]
+pub fn install_model(
+    state: State<'_, AppState>,
+    engine: String,
+    model_path: String,
+) -> Result<serde_json::Value, String> {
+    let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+    let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
+
+    let engine_type = resources::ResourceEngine::from_str(&engine)
+        .ok_or_else(|| format!("Unknown engine: {}", engine))?;
+
+    let source = std::path::PathBuf::from(&model_path);
+    if !source.exists() {
+        return Err(format!("路径不存在: {}", model_path));
+    }
+
+    // Determine target filename
+    let target_name = if source.is_dir() {
+        // If it's a directory, look for the default model filename
+        let default_name = engine_type.default_model_filename();
+        let full_path = source.join(default_name);
+        if !full_path.exists() {
+            return Err(format!(
+                "目录中没有找到模型文件 {}，请指定模型文件的完整路径",
+                default_name
+            ));
+        }
+        default_name.to_string()
+    } else {
+        // If it's a file, use its name or rename to default
+        source.file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .ok_or_else(|| "无效的文件路径".to_string())?
+    };
+
+    // Copy to models directory
+    let models_dir = manager.ensure_models_dir(engine_type);
+    let dest = models_dir.join(&target_name);
+    std::fs::copy(&source, &dest).map_err(|e| format!("复制模型文件失败: {}", e))?;
+
+    log::info!("Installed model '{}' for {}", target_name, engine_type.display_name());
+
+    Ok(serde_json::json!({
+        "engine": engine_type.as_str(),
+        "model_file": target_name,
+        "model_exists": manager.model_path(engine_type).is_some(),
+    }))
+}
+
 /// Get the default endpoint for a local engine
 #[tauri::command]
 pub fn get_resource_endpoint(engine: String) -> Result<String, String> {
