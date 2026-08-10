@@ -6,6 +6,7 @@ pub mod server;
 
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use tauri::{self, Manager};
 
 /// Supported local ASR engines
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]
@@ -324,4 +325,59 @@ impl ResourceManager {
 /// Get the default resource directory (in app data)
 pub fn default_resource_dir(app_data_dir: &Path) -> PathBuf {
     app_data_dir.join("resources")
+}
+
+/// Copy bundled resources from app resources to app data directory
+/// This should be called on first launch to extract bundled server binaries
+pub fn ensure_bundled_resources(app: &tauri::AppHandle) -> anyhow::Result<()> {
+    let app_data_dir = app.path().app_data_dir()?;
+    let resource_dir = default_resource_dir(&app_data_dir);
+    std::fs::create_dir_all(&resource_dir)?;
+
+    // Check if resources are already extracted
+    let whisper_dir = resource_dir.join("whisper_cpp");
+    let funasr_dir = resource_dir.join("funasr");
+
+    // Get resource directory from app bundle
+    let resource_dir_bundled = app.path().resource_dir()?;
+
+    // Copy whisper.cpp bundled resources
+    if !whisper_dir.exists() || is_dir_empty(&whisper_dir)? {
+        let bundled = resource_dir_bundled.join("whisper_cpp");
+        if bundled.exists() {
+            copy_dir_all(&bundled, &whisper_dir)?;
+            log::info!("Extracted bundled whisper.cpp resources");
+        }
+    }
+
+    // Copy FunASR bundled resources
+    if !funasr_dir.exists() || is_dir_empty(&funasr_dir)? {
+        let bundled = resource_dir_bundled.join("funasr");
+        if bundled.exists() {
+            copy_dir_all(&bundled, &funasr_dir)?;
+            log::info!("Extracted bundled FunASR resources");
+        }
+    }
+
+    Ok(())
+}
+
+fn is_dir_empty(dir: &Path) -> anyhow::Result<bool> {
+    Ok(std::fs::read_dir(dir)?.next().is_none())
+}
+
+fn copy_dir_all(src: &Path, dst: &Path) -> anyhow::Result<()> {
+    if !dst.exists() {
+        std::fs::create_dir_all(dst)?;
+    }
+    for entry in std::fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        if ty.is_dir() {
+            copy_dir_all(&entry.path(), &dst.join(entry.file_name()))?;
+        } else {
+            std::fs::copy(&entry.path(), &dst.join(entry.file_name()))?;
+        }
+    }
+    Ok(())
 }

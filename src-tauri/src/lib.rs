@@ -99,6 +99,12 @@ pub fn run() {
             // Initialize resource manager
             let resource_dir = resources::default_resource_dir(&app_dir);
             std::fs::create_dir_all(&resource_dir).ok();
+
+            // Extract bundled resources on first launch
+            if let Err(e) = resources::ensure_bundled_resources(&handle) {
+                log::warn!("Failed to extract bundled resources: {}", e);
+            }
+
             let resource_manager = ResourceManager::new(resource_dir);
             *app.state::<AppState>().resource_manager.lock().unwrap() = Some(resource_manager);
             log::info!("Resource manager initialized at: {:?}", resources::default_resource_dir(&app_dir));
