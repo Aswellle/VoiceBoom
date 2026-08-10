@@ -6,6 +6,7 @@ mod asr;
 mod commands;
 mod db;
 mod shortcut;
+mod tray;
 
 use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
@@ -80,6 +81,12 @@ pub fn run() {
             // C6 fix: Initialize shortcut manager
             let shortcut_manager = GlobalShortcutManager::new(handle.clone());
             *app.state::<AppState>().shortcut_manager.lock().unwrap() = Some(shortcut_manager);
+
+            // Initialize system tray
+            match tray::create_tray(&handle) {
+                Ok(_) => log::info!("System tray created successfully"),
+                Err(e) => log::warn!("Failed to create system tray: {}", e),
+            }
 
             log::info!("VoiceBoom initialized successfully");
             Ok(())

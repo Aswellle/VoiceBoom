@@ -24,7 +24,7 @@ pub async fn start_recording(
     state: State<'_, AppState>,
     engine: Option<String>,
     language: Option<String>,
-    api_key: Option<String>,
+    apiKey: Option<String>,
     endpoint: Option<String>,
 ) -> Result<(), String> {
     log::info!("Starting recording...");
@@ -38,7 +38,7 @@ pub async fn start_recording(
     if let Some(ref mut asr) = asr_clone {
         let config = AsrConfig {
             engine_type: parse_engine_type(engine.as_deref().unwrap_or("openai_whisper")),
-            api_key: api_key.clone(),
+            api_key: apiKey.clone(),
             endpoint: endpoint.clone(),
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
             sample_rate: 16000,

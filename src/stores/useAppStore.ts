@@ -66,6 +66,7 @@ interface AppState {
   // Settings
   settings: AppSettings;
   updateSettings: (partial: Partial<AppSettings>) => void;
+  loadSettings: () => Promise<void>;
   resetSettings: () => void;
 
   // UI state
