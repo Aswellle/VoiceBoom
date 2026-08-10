@@ -1,11 +1,12 @@
 // Settings panel — configuration UI for VoiceBoom
 // Tabs: Voice, AI Model, Shortcuts, Display, Advanced, About
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
+import { invoke } from '@tauri-apps/api/core';
 
-type TabId = 'voice' | 'model' | 'shortcuts' | 'display' | 'advanced' | 'about';
+type TabId = 'voice' | 'model' | 'local' | 'shortcuts' | 'display' | 'advanced' | 'about';
 
 interface Tab {
   id: TabId;
@@ -15,6 +16,7 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'voice', label: '语音' },
   { id: 'model', label: 'AI 模型' },
+  { id: 'local', label: '本地资源' },
   { id: 'shortcuts', label: '快捷键' },
   { id: 'display', label: '显示' },
   { id: 'advanced', label: '高级' },
@@ -498,6 +500,132 @@ function AboutTab() {
   );
 }
 
+/// Tab content: Local Resources management
+function LocalResourcesTab() {
+  const [resources, setResources] = useState<any[]>([]);
+  const [selectedEngine, setSelectedEngine] = useState<string | null>(null);
+
+  useEffect(() => {
+    invoke('get_resource_status').then((status) => {
+      setResources(status as any[]);
+    }).catch(() => {});
+  }, []);
+
+  const handleInstall = async (engine: string) => {
+    // Use a simple prompt for the path (dialog plugin not available in this config)
+    const path = prompt(`请输入 ${engine} 资源包目录的完整路径:\n\n例如: C:\\VoiceBoom\\resources\\whisper_cpp`);
+    if (path && path.trim()) {
+      invoke('install_resource', {
+        engine,
+        sourcePath: path.trim(),
+        version: '1.0.0',
+        channel: 'stable',
+      }).then(() => {
+        // Refresh status
+        invoke('get_resource_status').then((status) => {
+          setResources(status as any[]);
+        });
+      }).catch((e) => {
+        alert('安装失败: ' + e);
+      });
+    }
+  };
+
+  const handleRemove = async (engine: string) => {
+    invoke('remove_resource', { engine }).then(() => {
+      invoke('get_resource_status').then((status) => {
+        setResources(status as any[]);
+      });
+    }).catch(() => {});
+  };
+
+  const formatSize = (bytes: number) => {
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+  };
+
+  const engines = [
+    { id: 'whisper_cpp', name: 'Whisper.cpp', description: '本地离线语音识别，支持多语言' },
+    { id: 'funasr', name: 'FunASR', description: '阿里达摩院中文语音识别，离线运行' },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-sm text-gray-500">
+        管理本地语音识别服务的资源包。资源包包含运行本地推理所需的模型文件和服务器程序。
+      </p>
+
+      {engines.map((engine) => {
+        const resource = resources.find((r) => r.engine === engine.id);
+        const isReady = resource?.is_ready;
+
+        return (
+          <div key={engine.id} className="p-4 rounded-lg border border-gray-200 bg-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-medium text-gray-800">{engine.name}</h3>
+                <p className="text-xs text-gray-500 mt-0.5">{engine.description}</p>
+              </div>
+              {isReady ? (
+                <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">已就绪</span>
+              ) : (
+                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-full">未安装</span>
+              )}
+            </div>
+
+            {resource && isReady && (
+              <div className="mt-3 pt-3 border-t border-gray-100">
+                <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                  <div>版本: <span className="text-gray-700">{resource.version}</span></div>
+                  <div>大小: <span className="text-gray-700">{formatSize(resource.size_bytes)}</span></div>
+                  <div>通道: <span className="text-gray-700">{resource.channel_name}</span></div>
+                  <div>路径: <span className="text-gray-700 truncate block" title={resource.path}>{resource.path}</span></div>
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 flex gap-2">
+              {!isReady ? (
+                <button
+                  onClick={() => handleInstall(engine.id)}
+                  className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                >
+                  安装资源包...
+                </button>
+              ) : (
+                <>
+                  <button
+                    onClick={() => handleInstall(engine.id)}
+                    className="px-3 py-1.5 bg-gray-100 text-gray-700 text-xs rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    更新/更换
+                  </button>
+                  <button
+                    onClick={() => handleRemove(engine.id)}
+                    className="px-3 py-1.5 bg-red-50 text-red-600 text-xs rounded-lg hover:bg-red-100 transition-colors"
+                  >
+                    卸载
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        );
+      })}
+
+      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <p className="text-xs text-blue-600">
+          💡 提示：安装资源包时，请选择包含服务器程序和模型文件的目录。
+          后续版本将支持在线下载和版本通道选择（稳定版/前瞻版）。
+        </p>
+      </div>
+    </div>
+  );
+}
+
 /// Main settings panel
 export function SettingsPanel() {
   const [activeTab, setActiveTab] = useState<TabId>('model'); // Default to model tab for first-time setup
@@ -508,6 +636,8 @@ export function SettingsPanel() {
         return <VoiceTab />;
       case 'model':
         return <ModelTab />;
+      case 'local':
+        return <LocalResourcesTab />;
       case 'shortcuts':
         return <ShortcutsTab />;
       case 'display':

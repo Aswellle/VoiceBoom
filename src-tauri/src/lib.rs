@@ -5,12 +5,15 @@ mod audio;
 mod asr;
 mod commands;
 mod db;
+mod resources;
 mod shortcut;
 mod tray;
 
 use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
 use db::Database;
+use resources::ResourceManager;
+use resources::server::ServerManager;
 use shortcut::GlobalShortcutManager;
 use tauri::Manager;
 
@@ -20,6 +23,8 @@ pub struct AppState {
     pub asr_manager: std::sync::Mutex<Option<AsrManager>>,
     pub db: std::sync::Mutex<Option<Database>>,
     pub shortcut_manager: std::sync::Mutex<Option<GlobalShortcutManager>>,
+    pub resource_manager: std::sync::Mutex<Option<ResourceManager>>,
+    pub server_manager: std::sync::Mutex<Option<ServerManager>>,
 }
 
 impl AppState {
@@ -29,6 +34,8 @@ impl AppState {
             asr_manager: std::sync::Mutex::new(None),
             db: std::sync::Mutex::new(None),
             shortcut_manager: std::sync::Mutex::new(None),
+            resource_manager: std::sync::Mutex::new(None),
+            server_manager: std::sync::Mutex::new(None),
         }
     }
 }
@@ -56,6 +63,13 @@ pub fn run() {
             commands::unregister_shortcut,
             commands::get_audio_devices,
             commands::open_settings,
+            commands::get_resource_status,
+            commands::install_resource,
+            commands::remove_resource,
+            commands::get_resource_endpoint,
+            commands::start_local_server,
+            commands::stop_local_server,
+            commands::is_server_running,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -82,6 +96,18 @@ pub fn run() {
             let shortcut_manager = GlobalShortcutManager::new(handle.clone());
             *app.state::<AppState>().shortcut_manager.lock().unwrap() = Some(shortcut_manager);
 
+            // Initialize resource manager
+            let resource_dir = resources::default_resource_dir(&app_dir);
+            std::fs::create_dir_all(&resource_dir).ok();
+            let resource_manager = ResourceManager::new(resource_dir);
+            *app.state::<AppState>().resource_manager.lock().unwrap() = Some(resource_manager);
+            log::info!("Resource manager initialized at: {:?}", resources::default_resource_dir(&app_dir));
+
+            // Initialize server manager
+            let server_manager = ServerManager::new();
+            *app.state::<AppState>().server_manager.lock().unwrap() = Some(server_manager);
+            log::info!("Server manager initialized");
+
             // Initialize system tray
             match tray::create_tray(&handle) {
                 Ok(_) => log::info!("System tray created successfully"),
@@ -90,6 +116,19 @@ pub fn run() {
 
             log::info!("VoiceBoom initialized successfully");
             Ok(())
+        })
+        .on_window_event(|window, event| {
+            // Bug fix: Prevent settings window from being destroyed on close
+            // Instead, hide it so it can be reopened via tray or gear button
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                let label = window.label();
+                if label == "settings" {
+                    // Prevent the window from being destroyed
+                    api.prevent_close();
+                    // Hide the window instead
+                    let _ = window.hide();
+                }
+            }
         })
         .run(tauri::generate_context!())
         .expect("error while running VoiceBoom application");
