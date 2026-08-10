@@ -45,12 +45,25 @@ export function useAsr(): UseAsrReturn {
       }
     });
 
+    // Listen for ASR errors
+    const unlistenError = listen<string>('asr:error', (event) => {
+      console.error('ASR Error:', event.payload);
+      useAppStore.getState().showToast(event.payload);
+    });
+
+    // Listen for ASR status messages
+    const unlistenStatus = listen<string>('asr:status', (event) => {
+      useAppStore.getState().updatePartial(`⚠ ${event.payload}`);
+    });
+
     const unlistenLevel = listen<number>('audio:level', (event) => {
       useAppStore.getState().setAudioLevel(event.payload);
     });
 
     return () => {
       unlistenResult.then((f) => f());
+      unlistenError.then((f) => f());
+      unlistenStatus.then((f) => f());
       unlistenLevel.then((f) => f());
     };
   }, [addSegment, updatePartial]);
@@ -71,8 +84,7 @@ export function useAsr(): UseAsrReturn {
         endpoint: settings.endpoint,
       });
 
-      // m8 fix: Audio level now comes from Rust via 'audio:level' events
-      // No frontend simulation needed
+      // Audio level comes from Rust via 'audio:level' events
     } catch (error) {
       console.error('Failed to start recording:', error);
       isListeningRef.current = false;

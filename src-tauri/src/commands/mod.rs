@@ -35,7 +35,7 @@ pub async fn start_recording(
         let guard = state.asr_manager.lock().map_err(|e| e.to_string())?;
         guard.clone()
     };
-    if let Some(ref mut asr) = asr_clone {
+    let asr_initialized = if let Some(ref mut asr) = asr_clone {
         let config = AsrConfig {
             engine_type: parse_engine_type(engine.as_deref().unwrap_or("openai_whisper")),
             api_key: apiKey.clone(),
@@ -43,12 +43,26 @@ pub async fn start_recording(
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
             sample_rate: 16000,
         };
-        asr.initialize(config).await.map_err(|e| e.to_string())?;
-    }
+        match asr.initialize(config).await {
+            Ok(()) => true,
+            Err(e) => {
+                // Emit error event to frontend
+                let _ = app_handle.emit("asr:error", format!("ASR 初始化失败: {}", e));
+                false
+            }
+        }
+    } else {
+        false
+    };
     // Put the initialized manager back
     {
         let mut guard = state.asr_manager.lock().map_err(|e| e.to_string())?;
         *guard = asr_clone;
+    }
+
+    // If ASR failed to initialize, still start audio capture but warn user
+    if !asr_initialized {
+        let _ = app_handle.emit("asr:status", "未配置 API Key 或连接失败，请在设置中配置");
     }
 
     // C2 fix: Start audio capture and get PCM sample receiver

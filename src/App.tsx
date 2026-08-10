@@ -10,12 +10,20 @@ import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
 /// Window label detection — uses Tauri 2.0 API
+/// Falls back to URL parameter or 'floating' default
 function getWindowLabel(): string {
   try {
-    return getCurrentWindow().label;
+    const label = getCurrentWindow().label;
+    if (label) return label;
   } catch {
-    return 'floating';
+    // Fallback to URL parameter
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const urlLabel = params.get('window');
+      if (urlLabel) return urlLabel;
+    }
   }
+  return 'floating';
 }
 
 export default function App() {

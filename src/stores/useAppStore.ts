@@ -33,6 +33,7 @@ export interface AppSettings {
   theme: 'auto' | 'light' | 'dark';
   reduceMotion: boolean;
   autoStart: boolean;
+  vadSensitivity: number;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -47,6 +48,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   theme: 'auto',
   reduceMotion: false,
   autoStart: false,
+  vadSensitivity: 50,
 };
 
 /// Application state interface
@@ -161,6 +163,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           case 'theme': partial.theme = value as 'auto' | 'light' | 'dark'; break;
           case 'reduceMotion': partial.reduceMotion = value === 'true'; break;
           case 'autoStart': partial.autoStart = value === 'true'; break;
+          case 'vadSensitivity': partial.vadSensitivity = parseInt(value, 10) || 50; break;
         }
       }
       if (Object.keys(partial).length > 0) {

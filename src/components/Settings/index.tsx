@@ -21,6 +21,62 @@ const TABS: Tab[] = [
   { id: 'about', label: '关于' },
 ];
 
+/// Engine metadata for UI rendering
+interface EngineInfo {
+  id: AsrEngineType;
+  name: string;
+  description: string;
+  keyPlaceholder: string;
+  keyHelp: string;
+  endpointPlaceholder: string;
+  isLocal: boolean;
+  downloadUrl?: string;
+  downloadHelp?: string;
+}
+
+const ENGINES: EngineInfo[] = [
+  {
+    id: 'openai_whisper',
+    name: 'OpenAI Whisper API',
+    description: 'OpenAI 官方云端语音识别，支持多语言，准确率高',
+    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
+    keyHelp: '从 platform.openai.com/api-keys 获取 API Key',
+    endpointPlaceholder: 'wss://api.openai.com/v1/audio/transcriptions',
+    isLocal: false,
+  },
+  {
+    id: 'deepgram',
+    name: 'Deepgram',
+    description: '专业语音识别服务，低延迟流式转写',
+    keyPlaceholder: 'xxxxxxxxxxxxxxxxxxxxxxxx',
+    keyHelp: '从 console.deepgram.com/settings/api-keys 获取 API Key',
+    endpointPlaceholder: 'wss://api.deepgram.com/v1/listen',
+    isLocal: false,
+  },
+  {
+    id: 'whisper_cpp',
+    name: 'Whisper.cpp（本地）',
+    description: '本地离线运行，无需网络，保护隐私',
+    keyPlaceholder: '（本地服务无需 API Key）',
+    keyHelp: '本地模型不需要 API Key，但需要下载模型文件',
+    endpointPlaceholder: 'ws://localhost:8080/ws',
+    isLocal: true,
+    downloadUrl: 'https://github.com/ggerganov/whisper.cpp',
+    downloadHelp: '下载 whisper.cpp 并运行本地 WebSocket 服务',
+  },
+  {
+    id: 'funasr',
+    name: 'FunASR（本地）',
+    description: '阿里达摩院中文语音识别，本地离线运行',
+    keyPlaceholder: '（本地服务无需 API Key）',
+    keyHelp: '本地模型不需要 API Key，但需要下载模型文件',
+    endpointPlaceholder: 'ws://localhost:9880/ws',
+    isLocal: true,
+    downloadUrl: 'https://github.com/modelscope/FunASR',
+    downloadHelp: '下载 FunASR 并运行本地 WebSocket 服务',
+  },
+];
+
 /// Slider component
 function Slider({
   label,
@@ -98,12 +154,16 @@ function TextInput({
   onChange,
   placeholder,
   type = 'text',
+  disabled = false,
+  helpText,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   type?: string;
+  disabled?: boolean;
+  helpText?: string;
 }) {
   return (
     <div className="flex flex-col gap-1">
@@ -113,8 +173,12 @@ function TextInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400"
+        disabled={disabled}
+        className={`rounded-lg border border-gray-200 px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-blue-400 ${
+          disabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''
+        }`}
       />
+      {helpText && <p className="text-xs text-gray-400 mt-0.5">{helpText}</p>}
     </div>
   );
 }
@@ -158,7 +222,7 @@ function VoiceTab() {
   return (
     <div className="flex flex-col gap-4">
       <Select
-        label="语言"
+        label="识别语言"
         value={settings.language}
         onChange={(v) => updateSettings({ language: v })}
         options={[
@@ -171,46 +235,150 @@ function VoiceTab() {
       />
       <Slider
         label="VAD 灵敏度"
-        value={50}
+        value={settings.vadSensitivity}
         min={0}
         max={100}
-        onChange={() => {}}
+        onChange={(v) => updateSettings({ vadSensitivity: v })}
       />
+      <p className="text-xs text-gray-400">
+        灵敏度越高，越容易检测到语音开始；灵敏度越低，越不容易被环境噪音误触发。
+      </p>
     </div>
   );
 }
 
-/// Tab content: AI Model settings
+/// Tab content: AI Model settings — redesigned with engine-specific fields
 function ModelTab() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
 
+  const currentEngine = ENGINES.find((e) => e.id === settings.engine) || ENGINES[0];
+
+  const handleEngineChange = (engineId: string) => {
+    updateSettings({ engine: engineId as AsrEngineType });
+  };
+
   return (
-    <div className="flex flex-col gap-4">
-      <Select
-        label="ASR 引擎"
-        value={settings.engine}
-        onChange={(v) => updateSettings({ engine: v as AsrEngineType })}
-        options={[
-          { value: 'openai_whisper', label: 'OpenAI Whisper API' },
-          { value: 'deepgram', label: 'Deepgram' },
-          { value: 'whisper_cpp', label: 'Whisper.cpp (本地)' },
-          { value: 'funasr', label: 'FunASR (本地)' },
-        ]}
-      />
-      <TextInput
-        label="API Key"
-        value={settings.apiKey}
-        onChange={(v) => updateSettings({ apiKey: v })}
-        placeholder="输入您的 API Key"
-        type="password"
-      />
-      <TextInput
-        label="API 端点（可选）"
-        value={settings.endpoint}
-        onChange={(v) => updateSettings({ endpoint: v })}
-        placeholder="留空使用默认端点"
-      />
+    <div className="flex flex-col gap-5">
+      {/* Engine Selection */}
+      <div className="flex flex-col gap-2">
+        <label className="text-sm text-gray-600 font-medium">语音识别服务</label>
+        <div className="grid grid-cols-1 gap-2">
+          {ENGINES.map((engine) => (
+            <button
+              key={engine.id}
+              onClick={() => handleEngineChange(engine.id)}
+              className={`text-left p-3 rounded-lg border-2 transition-all ${
+                settings.engine === engine.id
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-gray-200 hover:border-gray-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-medium text-gray-800">{engine.name}</span>
+                {engine.isLocal && (
+                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                    本地离线
+                  </span>
+                )}
+                {settings.engine === engine.id && (
+                  <span className="text-blue-500">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <polyline points="20 6 9 17 4 12"/>
+                    </svg>
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gray-500 mt-1">{engine.description}</p>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Engine-specific configuration */}
+      <div className="border-t border-gray-200 pt-4">
+        <div className="flex items-center gap-2 mb-3">
+          <span className="text-sm font-medium text-gray-700">
+            {currentEngine.name} 配置
+          </span>
+          {currentEngine.isLocal && (
+            <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
+              需本地部署
+            </span>
+          )}
+        </div>
+
+        {/* API Key (cloud services only) */}
+        {!currentEngine.isLocal ? (
+          <div className="flex flex-col gap-3">
+            <TextInput
+              label={`${currentEngine.name} API Key`}
+              value={settings.apiKey}
+              onChange={(v) => updateSettings({ apiKey: v })}
+              placeholder={currentEngine.keyPlaceholder}
+              type="password"
+              helpText={currentEngine.keyHelp}
+            />
+            <TextInput
+              label="API 端点（可选）"
+              value={settings.endpoint}
+              onChange={(v) => updateSettings({ endpoint: v })}
+              placeholder={currentEngine.endpointPlaceholder}
+              helpText="留空使用默认端点"
+            />
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {/* Local service endpoint */}
+            <TextInput
+              label="本地服务地址"
+              value={settings.endpoint}
+              onChange={(v) => updateSettings({ endpoint: v })}
+              placeholder={currentEngine.endpointPlaceholder}
+              helpText="本地 WebSocket 服务地址"
+            />
+            {/* Download link */}
+            {currentEngine.downloadUrl && (
+              <div className="p-3 bg-amber-50 rounded-lg border border-amber-200">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">需要下载本地服务</p>
+                    <p className="text-xs text-amber-600 mt-0.5">{currentEngine.downloadHelp}</p>
+                  </div>
+                  <a
+                    href={currentEngine.downloadUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap"
+                  >
+                    前往下载
+                  </a>
+                </div>
+              </div>
+            )}
+            <TextInput
+              label="API Key"
+              value={settings.apiKey}
+              onChange={(v) => updateSettings({ apiKey: v })}
+              placeholder={currentEngine.keyPlaceholder}
+              disabled={true}
+              helpText={currentEngine.keyHelp}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Connection status indicator */}
+      <div className="border-t border-gray-200 pt-4">
+        <div className="flex items-center gap-2">
+          <div className={`w-2 h-2 rounded-full ${settings.apiKey || currentEngine.isLocal ? 'bg-green-500' : 'bg-red-500'}`} />
+          <span className="text-xs text-gray-500">
+            {settings.apiKey || currentEngine.isLocal
+              ? '已配置，可以开始语音识别'
+              : '请填写 API Key 后使用'}
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
@@ -231,6 +399,11 @@ function ShortcutsTab() {
       <p className="text-xs text-gray-400">
         按住快捷键开始录音，松开停止。支持 Ctrl、Alt、Shift、Cmd 等修饰键组合。
       </p>
+      <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <p className="text-xs text-blue-600">
+          💡 提示：如果快捷键与系统冲突，推荐使用 Ctrl+Shift+V 或 Alt+Space
+        </p>
+      </div>
     </div>
   );
 }
@@ -298,9 +471,9 @@ function AdvancedTab() {
         checked={settings.autoStart}
         onChange={(v) => updateSettings({ autoStart: v })}
       />
-      <div className="text-xs text-gray-400 mt-2">
-        <p>数据存储位置: ~/.voiceboom/</p>
-        <p className="mt-1">日志级别: INFO</p>
+      <div className="text-xs text-gray-400 mt-2 space-y-1">
+        <p>数据存储位置: %APPDATA%\com.voiceboom.app\</p>
+        <p>日志级别: INFO</p>
       </div>
     </div>
   );
@@ -317,9 +490,9 @@ function AboutTab() {
         实时流式智能语音输入法 — 像 Apple macOS 原生交互一样优雅，
         同时具备 AI 时代实时语音输入能力。
       </p>
-      <div className="text-xs text-gray-400 mt-4">
+      <div className="text-xs text-gray-400 mt-4 space-y-1 text-center">
         <p>React 19 + Tauri 2.0 + Rust</p>
-        <p>OpenAI Whisper / Deepgram</p>
+        <p>OpenAI Whisper / Deepgram / Whisper.cpp / FunASR</p>
       </div>
     </div>
   );
@@ -327,7 +500,7 @@ function AboutTab() {
 
 /// Main settings panel
 export function SettingsPanel() {
-  const [activeTab, setActiveTab] = useState<TabId>('voice');
+  const [activeTab, setActiveTab] = useState<TabId>('model'); // Default to model tab for first-time setup
 
   const renderTab = () => {
     switch (activeTab) {
