@@ -64,7 +64,19 @@ export default function App() {
   // Listen for tray menu events (engine/language changes)
   useEffect(() => {
     const unlistenEngine = listen<string>('tray:set-engine', (event) => {
-      updateSettings({ engine: event.payload as any });
+      const engineId = event.payload;
+      updateSettings({ engine: engineId as any });
+      // Automation: switch_engine auto-configures local servers
+      invoke('switch_engine', { engine: engineId })
+        .then((result) => {
+          const status = result as any;
+          if (status.is_local && status.status === 'server_started') {
+            useAppStore.getState().showToast('本地服务器已自动启动');
+          } else if (status.is_local && status.status === 'model_missing') {
+            useAppStore.getState().showToast('需要安装本地模型文件');
+          }
+        })
+        .catch(() => {});
     });
     const unlistenLanguage = listen<string>('tray:set-language', (event) => {
       updateSettings({ language: event.payload });

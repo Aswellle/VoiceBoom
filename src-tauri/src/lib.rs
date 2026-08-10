@@ -69,6 +69,7 @@ pub fn run() {
             commands::stop_local_server,
             commands::is_server_running,
             commands::install_model,
+            commands::switch_engine,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

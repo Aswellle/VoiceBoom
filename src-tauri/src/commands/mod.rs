@@ -31,6 +31,76 @@ pub async fn start_recording(
 ) -> Result<(), String> {
     log::info!("Starting recording...");
 
+    let engine_str = engine.as_deref().unwrap_or("openai_whisper");
+    let engine_type = parse_engine_type(engine_str);
+
+    // Automation: For local engines, auto-start the server if needed
+    let mut resolved_endpoint = endpoint.clone();
+    let is_local = matches!(engine_type, AsrEngineType::WhisperCpp | AsrEngineType::Funasr);
+    if is_local {
+        let local_engine = match engine_type {
+            AsrEngineType::WhisperCpp => Some(resources::ResourceEngine::WhisperCpp),
+            AsrEngineType::Funasr => Some(resources::ResourceEngine::FunASR),
+            _ => None,
+        };
+        if let Some(local_engine) = local_engine {
+            // Check if server is running; if not, auto-start it
+            let server_running = {
+                let guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+                guard.as_ref().map(|sm| sm.is_running(local_engine)).unwrap_or(false)
+            };
+
+            if !server_running {
+                let start_result = {
+                    let server_guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+                    let resource_guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+                    let server_manager = server_guard.as_ref().ok_or("Server manager not initialized")?;
+                    let resource_manager = resource_guard.as_ref().ok_or("Resource manager not initialized")?;
+
+                    let server_binary = resource_manager.server_binary_path(local_engine)
+                        .ok_or_else(|| format!("{} 服务器程序未找到", local_engine.display_name()))?;
+                    let model_path = resource_manager.model_path(local_engine)
+                        .ok_or_else(|| format!("{} 模型文件未安装，请先在设置中安装模型", local_engine.display_name()))?;
+                    let vad_model_path = resource_manager.vad_model_path(local_engine);
+                    let port = match local_engine {
+                        resources::ResourceEngine::WhisperCpp => 8080,
+                        resources::ResourceEngine::FunASR => 9880,
+                    };
+                    let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+
+                    server_manager.start_server(
+                        local_engine,
+                        server_binary,
+                        model_path,
+                        vad_model_path,
+                        language.clone().unwrap_or_else(|| "auto".to_string()).as_str(),
+                        port,
+                        threads,
+                    )
+                };
+
+                match start_result {
+                    Ok(ep) => {
+                        resolved_endpoint = Some(ep.clone());
+                        let _ = app_handle.emit("asr:status", format!("本地 {} 服务器已启动", local_engine.display_name()));
+                    }
+                    Err(e) => {
+                        let _ = app_handle.emit("asr:error", e.to_string());
+                        return Err(e.to_string());
+                    }
+                }
+            } else {
+                // Server already running - use its endpoint
+                resolved_endpoint = {
+                    let guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+                    guard.as_ref()
+                        .and_then(|sm| sm.get_endpoint(local_engine))
+                        .or(Some(local_engine.default_endpoint().to_string()))
+                };
+            }
+        }
+    }
+
     // M4 fix: Initialize ASR engine with config
     // Clone the manager out, drop the lock, then await initialization
     let mut asr_clone = {
@@ -39,9 +109,9 @@ pub async fn start_recording(
     };
     let asr_initialized = if let Some(ref mut asr) = asr_clone {
         let config = AsrConfig {
-            engine_type: parse_engine_type(engine.as_deref().unwrap_or("openai_whisper")),
+            engine_type: engine_type,
             api_key: apiKey.clone(),
-            endpoint: endpoint.clone(),
+            endpoint: resolved_endpoint,
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
             sample_rate: 16000,
         };
@@ -64,7 +134,7 @@ pub async fn start_recording(
 
     // If ASR failed to initialize, still start audio capture but warn user
     if !asr_initialized {
-        let _ = app_handle.emit("asr:status", "未配置 API Key 或连接失败，请在设置中配置");
+        let _ = app_handle.emit("asr:status", "ASR 引擎初始化失败，请检查配置");
     }
 
     // C2 fix: Start audio capture and get PCM sample receiver
@@ -357,6 +427,97 @@ pub fn is_server_running(state: State<'_, AppState>, engine: String) -> Result<b
         .ok_or_else(|| format!("Unknown engine: {}", engine))?;
 
     Ok(server_manager.is_running(engine_type))
+}
+
+/// Switch ASR engine and auto-configure local servers
+/// Returns the engine status for the UI to display
+#[tauri::command]
+pub fn switch_engine(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    engine: String,
+) -> Result<serde_json::Value, String> {
+    log::info!("Switching engine to: {}", engine);
+
+    let engine_type = parse_engine_type(&engine);
+    let is_local = matches!(engine_type, AsrEngineType::WhisperCpp | AsrEngineType::Funasr);
+
+    let mut result = serde_json::json!({
+        "engine": engine,
+        "is_local": is_local,
+        "server_running": false,
+        "model_installed": false,
+        "server_binary_installed": false,
+        "endpoint": "",
+        "status": "ok",
+    });
+
+    if is_local {
+        let local_engine = match engine_type {
+            AsrEngineType::WhisperCpp => resources::ResourceEngine::WhisperCpp,
+            AsrEngineType::Funasr => resources::ResourceEngine::FunASR,
+            _ => unreachable!(),
+        };
+
+        let server_guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+        let resource_guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+        let server_manager = server_guard.as_ref().ok_or("Server manager not initialized")?;
+        let resource_manager = resource_guard.as_ref().ok_or("Resource manager not initialized")?;
+
+        let server_binary_installed = resource_manager.server_binary_path(local_engine).is_some();
+        let model_installed = resource_manager.model_path(local_engine).is_some();
+        let server_running = server_manager.is_running(local_engine);
+
+        result["server_binary_installed"] = serde_json::Value::Bool(server_binary_installed);
+        result["model_installed"] = serde_json::Value::Bool(model_installed);
+        result["server_running"] = serde_json::Value::Bool(server_running);
+        result["endpoint"] = serde_json::Value::String(local_engine.default_endpoint().to_string());
+
+        // Auto-start the server if model is available but server isn't running
+        if model_installed && !server_running {
+            let server_binary = match resource_manager.server_binary_path(local_engine) {
+                Some(b) => b,
+                None => {
+                    result["status"] = "missing_server_binary".into();
+                    return Ok(result);
+                }
+            };
+            let model_path = match resource_manager.model_path(local_engine) {
+                Some(m) => m,
+                None => unreachable!(),
+            };
+            let vad_model_path = resource_manager.vad_model_path(local_engine);
+            let port = match local_engine {
+                resources::ResourceEngine::WhisperCpp => 8080,
+                resources::ResourceEngine::FunASR => 9880,
+            };
+            let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+
+            match server_manager.start_server(
+                local_engine,
+                server_binary,
+                model_path,
+                vad_model_path,
+                "auto",
+                port,
+                threads,
+            ) {
+                Ok(endpoint) => {
+                    result["server_running"] = serde_json::Value::Bool(true);
+                    result["endpoint"] = serde_json::Value::String(endpoint);
+                    result["status"] = "server_started".into();
+                    let _ = app_handle.emit("asr:status", format!("本地 {} 服务器已启动", local_engine.display_name()));
+                }
+                Err(e) => {
+                    result["status"] = serde_json::Value::String(format!("start_failed: {}", e));
+                }
+            }
+        } else if !model_installed {
+            result["status"] = "model_missing".into();
+        }
+    }
+
+    Ok(result)
 }
 
 /// Install a model file into the models directory for a local engine

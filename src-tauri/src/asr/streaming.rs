@@ -2,7 +2,7 @@
 // Handles audio forwarding, result routing, and reconnection logic
 
 use super::engine_trait::{AsrConfig, AsrEngineType, AsrResult, StreamingAsrEngine};
-use super::adapters::{openai_whisper::OpenaiWhisperAdapter, deepgram::DeepgramAdapter};
+use super::adapters::{openai_whisper::OpenaiWhisperAdapter, deepgram::DeepgramAdapter, local::LocalAsrAdapter};
 use std::sync::Arc;
 use tokio::sync::Mutex;
 
@@ -26,14 +26,8 @@ impl AsrManager {
         let engine: Box<dyn StreamingAsrEngine> = match config.engine_type {
             AsrEngineType::OpenaiWhisper => Box::new(OpenaiWhisperAdapter::new()),
             AsrEngineType::Deepgram => Box::new(DeepgramAdapter::new()),
-            AsrEngineType::WhisperCpp => {
-                // TODO: Implement local Whisper.cpp adapter
-                anyhow::bail!("Whisper.cpp adapter not yet implemented (V1.5 feature)")
-            }
-            AsrEngineType::Funasr => {
-                // TODO: Implement FunASR adapter
-                anyhow::bail!("FunASR adapter not yet implemented (V1.5 feature)")
-            }
+            // Local engines connect to the bundled local ASR servers
+            AsrEngineType::WhisperCpp | AsrEngineType::Funasr => Box::new(LocalAsrAdapter::new()),
         };
 
         let mut engine = engine;

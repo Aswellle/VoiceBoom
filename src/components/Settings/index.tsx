@@ -253,12 +253,41 @@ function VoiceTab() {
 function ModelTab() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const showToast = useAppStore((s) => s.showToast);
+  const [engineStatus, setEngineStatus] = useState<Record<string, any>>({});
 
   const currentEngine = ENGINES.find((e) => e.id === settings.engine) || ENGINES[0];
 
   const handleEngineChange = (engineId: string) => {
     updateSettings({ engine: engineId as AsrEngineType });
+    // Automation: call switch_engine to auto-configure local servers
+    invoke('switch_engine', { engine: engineId })
+      .then((result) => {
+        const status = result as any;
+        setEngineStatus((prev) => ({ ...prev, [engineId]: status }));
+        // Show feedback for local engine automation
+        if (status.is_local) {
+          if (status.status === 'server_started') {
+            showToast(`${status.engine_name || engineId} 本地服务器已自动启动`);
+          } else if (status.status === 'model_missing') {
+            showToast('请先安装本地模型文件（见「本地资源」标签页）');
+          } else if (status.server_running) {
+            showToast(`${engineId} 服务器运行中`);
+          }
+        }
+      })
+      .catch((e) => console.error('switch_engine failed:', e));
   };
+
+  // Check current engine status on mount
+  useEffect(() => {
+    invoke('switch_engine', { engine: settings.engine })
+      .then((result) => {
+        const status = result as any;
+        setEngineStatus((prev) => ({ ...prev, [settings.engine]: status }));
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex flex-col gap-5">
@@ -331,31 +360,71 @@ function ModelTab() {
           </div>
         ) : (
           <div className="flex flex-col gap-3">
-            {/* Local engine - show status from resource manager */}
-            <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-              <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-green-500" />
-                <span className="text-xs text-blue-700 font-medium">服务器程序已内置</span>
-              </div>
-              <p className="text-xs text-blue-600 mt-1">
-                请在「本地资源」标签页管理模型文件和启动服务。
-                模型文件下载后放到资源目录的 models 文件夹即可使用。
-              </p>
-            </div>
+            {/* Local engine - live automation status */}
+            {(() => {
+              const status = engineStatus[settings.engine];
+              const serverRunning = status?.server_running;
+              const modelInstalled = status?.model_installed;
+              const serverBinaryInstalled = status?.server_binary_installed;
+
+              return (
+                <div className="flex flex-col gap-2">
+                  {/* Server binary status */}
+                  <div className={`p-3 rounded-lg border ${serverBinaryInstalled ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${serverBinaryInstalled ? 'bg-green-500' : 'bg-red-500'}`} />
+                      <span className="text-xs font-medium ${serverBinaryInstalled ? 'text-green-700' : 'text-red-700'}">
+                        {serverBinaryInstalled ? '服务器程序已内置' : '服务器程序未找到'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Model status */}
+                  <div className={`p-3 rounded-lg border ${modelInstalled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`w-2 h-2 rounded-full ${modelInstalled ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      <span className={`text-xs font-medium ${modelInstalled ? 'text-green-700' : 'text-amber-700'}`}>
+                        {modelInstalled ? '模型文件已就绪' : '需要安装模型文件'}
+                      </span>
+                    </div>
+                    {!modelInstalled && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        请前往「本地资源」标签页安装模型文件，或点击下方按钮。
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Server running status */}
+                  {modelInstalled && (
+                    <div className={`p-3 rounded-lg border ${serverRunning ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${serverRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
+                        <span className={`text-xs font-medium ${serverRunning ? 'text-green-700' : 'text-gray-600'}`}>
+                          {serverRunning ? '本地服务器运行中' : '本地服务器未启动'}
+                        </span>
+                      </div>
+                      {serverRunning && status?.endpoint && (
+                        <p className="text-xs text-gray-500 mt-1">连接地址: <code>{status.endpoint}</code></p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Auto-config feedback */}
+                  {modelInstalled && !serverRunning && (
+                    <p className="text-xs text-gray-400">
+                      选择此引擎后将自动启动本地服务器，无需手动操作。
+                    </p>
+                  )}
+                </div>
+              );
+            })()}
+
             <TextInput
               label="本地服务地址"
               value={settings.endpoint}
               onChange={(v) => updateSettings({ endpoint: v })}
               placeholder={currentEngine.endpointPlaceholder}
-              helpText="本地 WebSocket 服务地址，默认无需修改"
-            />
-            <TextInput
-              label="API Key"
-              value={settings.apiKey}
-              onChange={(v) => updateSettings({ apiKey: v })}
-              placeholder={currentEngine.keyPlaceholder}
-              disabled={true}
-              helpText={currentEngine.keyHelp}
+              helpText="本地 WebSocket 服务地址，默认自动配置无需修改"
             />
           </div>
         )}

@@ -95,6 +95,15 @@ export function FloatingWindow() {
     ? ''
     : '按住快捷键说话';
 
+  // Engine display label
+  const engineLabel: Record<string, string> = {
+    openai_whisper: 'Whisper API',
+    deepgram: 'Deepgram',
+    whisper_cpp: 'Whisper 本地',
+    funasr: 'FunASR 本地',
+  };
+  const currentEngineLabel = engineLabel[settings.engine] || settings.engine;
+
   return (
     <motion.div
       variants={containerVariants}
@@ -138,10 +147,20 @@ export function FloatingWindow() {
           <span className="text-xs text-gray-400 italic flex-1">{statusText}</span>
         )}
 
+        {/* Current engine indicator */}
+        <span className="text-[10px] px-2 py-0.5 bg-white/30 rounded-full text-gray-500 whitespace-nowrap" title={`当前引擎: ${currentEngineLabel}`}>
+          {currentEngineLabel}
+        </span>
+
         {/* Settings button */}
         <button
-          onClick={() => invoke('open_settings').catch(() => {})}
-          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600"
+          onMouseDown={(e) => {
+            // Stop propagation so the parent drag handle doesn't intercept the click
+            e.stopPropagation();
+            e.preventDefault();
+          }}
+          onClick={() => invoke('open_settings').catch((err) => console.error('open_settings failed:', err))}
+          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
           title="设置"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
