@@ -5,7 +5,6 @@ use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::audio::vad::{VadConfig, VoiceActivityDetector};
 use crate::resources;
 use tauri::{AppHandle, Emitter, Manager, State};
-use tauri::Listener;
 
 /// Parse engine type string to enum
 fn parse_engine_type(engine: &str) -> AsrEngineType {
@@ -51,29 +50,35 @@ pub async fn start_recording(
             };
 
             if !server_running {
-                let start_result = {
-                    let server_guard = state.server_manager.lock().map_err(|e| e.to_string())?;
-                    let resource_guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
-                    let server_manager = server_guard.as_ref().ok_or("Server manager not initialized")?;
-                    let resource_manager = resource_guard.as_ref().ok_or("Resource manager not initialized")?;
-
-                    let server_binary = resource_manager.server_binary_path(local_engine)
+                // Extract paths from resource_manager in a separate scope to release the lock
+                let (server_binary, model_path, vad_model_path) = {
+                    let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+                    let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
+                    let server_binary = manager.server_binary_path(local_engine)
                         .ok_or_else(|| format!("{} 服务器程序未找到", local_engine.display_name()))?;
-                    let model_path = resource_manager.model_path(local_engine)
+                    let model_path = manager.model_path(local_engine)
                         .ok_or_else(|| format!("{} 模型文件未安装，请先在设置中安装模型", local_engine.display_name()))?;
-                    let vad_model_path = resource_manager.vad_model_path(local_engine);
-                    let port = match local_engine {
-                        resources::ResourceEngine::WhisperCpp => 8080,
-                        resources::ResourceEngine::FunASR => 9880,
-                    };
-                    let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+                    let vad_model_path = manager.vad_model_path(local_engine);
+                    (server_binary, model_path, vad_model_path)
+                };
 
-                    server_manager.start_server(
+                let port = match local_engine {
+                    resources::ResourceEngine::WhisperCpp => 8080,
+                    resources::ResourceEngine::FunASR => 9880,
+                };
+                let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
+                let lang = language.clone().unwrap_or_else(|| "auto".to_string());
+
+                // Start server in a separate scope (resource_manager lock already released - no deadlock)
+                let start_result = {
+                    let guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+                    let manager = guard.as_ref().ok_or("Server manager not initialized")?;
+                    manager.start_server(
                         local_engine,
                         server_binary,
                         model_path,
                         vad_model_path,
-                        language.clone().unwrap_or_else(|| "auto".to_string()).as_str(),
+                        &lang,
                         port,
                         threads,
                     )
@@ -459,14 +464,20 @@ pub fn switch_engine(
             _ => unreachable!(),
         };
 
-        let server_guard = state.server_manager.lock().map_err(|e| e.to_string())?;
-        let resource_guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
-        let server_manager = server_guard.as_ref().ok_or("Server manager not initialized")?;
-        let resource_manager = resource_guard.as_ref().ok_or("Resource manager not initialized")?;
+        // Extract status info in separate scopes to avoid holding multiple locks
+        let (server_binary_installed, model_installed) = {
+            let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+            let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
+            (
+                manager.server_binary_path(local_engine).is_some(),
+                manager.model_path(local_engine).is_some(),
+            )
+        };
 
-        let server_binary_installed = resource_manager.server_binary_path(local_engine).is_some();
-        let model_installed = resource_manager.model_path(local_engine).is_some();
-        let server_running = server_manager.is_running(local_engine);
+        let server_running = {
+            let guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+            guard.as_ref().map(|sm| sm.is_running(local_engine)).unwrap_or(false)
+        };
 
         result["server_binary_installed"] = serde_json::Value::Bool(server_binary_installed);
         result["model_installed"] = serde_json::Value::Bool(model_installed);
@@ -475,33 +486,40 @@ pub fn switch_engine(
 
         // Auto-start the server if model is available but server isn't running
         if model_installed && !server_running {
-            let server_binary = match resource_manager.server_binary_path(local_engine) {
-                Some(b) => b,
-                None => {
-                    result["status"] = "missing_server_binary".into();
-                    return Ok(result);
-                }
+            // Extract paths in separate scope
+            let (server_binary, model_path, vad_model_path) = {
+                let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
+                let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
+                let server_binary = manager.server_binary_path(local_engine)
+                    .ok_or_else(|| "服务器程序未找到".to_string())?;
+                let model_path = manager.model_path(local_engine)
+                    .ok_or_else(|| "模型文件未找到".to_string())?;
+                let vad_model_path = manager.vad_model_path(local_engine);
+                (server_binary, model_path, vad_model_path)
             };
-            let model_path = match resource_manager.model_path(local_engine) {
-                Some(m) => m,
-                None => unreachable!(),
-            };
-            let vad_model_path = resource_manager.vad_model_path(local_engine);
+
             let port = match local_engine {
                 resources::ResourceEngine::WhisperCpp => 8080,
                 resources::ResourceEngine::FunASR => 9880,
             };
             let threads = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
 
-            match server_manager.start_server(
-                local_engine,
-                server_binary,
-                model_path,
-                vad_model_path,
-                "auto",
-                port,
-                threads,
-            ) {
+            // Start server (locks already released - no deadlock)
+            let start_result = {
+                let guard = state.server_manager.lock().map_err(|e| e.to_string())?;
+                let manager = guard.as_ref().ok_or("Server manager not initialized")?;
+                manager.start_server(
+                    local_engine,
+                    server_binary,
+                    model_path,
+                    vad_model_path,
+                    "auto",
+                    port,
+                    threads,
+                )
+            };
+
+            match start_result {
                 Ok(endpoint) => {
                     result["server_running"] = serde_json::Value::Bool(true);
                     result["endpoint"] = serde_json::Value::String(endpoint);
