@@ -37,3 +37,6 @@ models/
 portable/
 src-tauri/models/
 *.pdb
+
+# Claude Code
+.claude/
