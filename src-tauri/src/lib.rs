@@ -13,9 +13,72 @@ use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
 use db::Database;
 use resources::ResourceManager;
-use resources::server::ServerManager;
 use shortcut::GlobalShortcutManager;
 use tauri::Manager;
+
+/// Initialize a file-based logger that writes to the app data directory.
+/// This is critical for diagnosing issues in the released GUI app where
+/// stderr/console output is invisible.
+fn init_file_logger() {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+
+    let log_path = std::env::temp_dir().join("voiceboom_debug.log");
+
+    // Open once (truncating any previous log) and hold the handle for the whole
+    // app lifetime. log() locks it per record instead of reopening the file on
+    // every call, which avoided interleaved/lost lines from concurrent writes.
+    let mut file = match OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .open(&log_path)
+    {
+        Ok(f) => f,
+        Err(_) => return, // Nothing else we can do if the log file is unwritable.
+    };
+
+    let _ = writeln!(
+        file,
+        "=== VoiceBoom debug log started at {:?} ===",
+        std::time::SystemTime::now()
+    );
+    let _ = writeln!(file, "Log file: {:?}", log_path);
+
+    let _ = log::set_boxed_logger(Box::new(Logger {
+        target: std::sync::Mutex::new(file),
+    }))
+    .map(|()| log::set_max_level(log::LevelFilter::Debug));
+
+    log::info!("File logger initialized at {:?}", log_path);
+}
+
+struct Logger {
+    target: std::sync::Mutex<std::fs::File>,
+}
+
+impl log::Log for Logger {
+    fn enabled(&self, metadata: &log::Metadata) -> bool {
+        metadata.level() <= log::Level::Debug
+    }
+
+    fn log(&self, record: &log::Record) {
+        if self.enabled(record.metadata()) {
+            use std::io::Write;
+            if let Ok(mut file) = self.target.lock() {
+                let _ = writeln!(
+                    file,
+                    "[{}] {}: {}",
+                    record.level(),
+                    record.target(),
+                    record.args()
+                );
+            }
+        }
+    }
+
+    fn flush(&self) {}
+}
 
 /// Shared application state
 pub struct AppState {
@@ -24,7 +87,11 @@ pub struct AppState {
     pub db: std::sync::Mutex<Option<Database>>,
     pub shortcut_manager: std::sync::Mutex<Option<GlobalShortcutManager>>,
     pub resource_manager: std::sync::Mutex<Option<ResourceManager>>,
-    pub server_manager: std::sync::Mutex<Option<ServerManager>>,
+    /// Atomic guard against concurrent start_recording calls
+    pub starting: std::sync::atomic::AtomicBool,
+    /// Atomic flag indicating a bridge task is actively running.
+    /// Arc so the spawned bridge task can hold its own handle.
+    pub bridge_active: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl AppState {
@@ -35,7 +102,8 @@ impl AppState {
             db: std::sync::Mutex::new(None),
             shortcut_manager: std::sync::Mutex::new(None),
             resource_manager: std::sync::Mutex::new(None),
-            server_manager: std::sync::Mutex::new(None),
+            starting: std::sync::atomic::AtomicBool::new(false),
+            bridge_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
     }
 }
@@ -43,14 +111,18 @@ impl AppState {
 /// Run the VoiceBoom application
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    // m11 fix: Use try_init to avoid panic if logger already initialized
-    let _ = env_logger::try_init();
+    // Initialize file-based logging so we can diagnose runtime issues in the
+    // released GUI app (stderr is invisible there).
+    init_file_logger();
+
+    log::info!("=== VoiceBoom starting ===");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::start_recording,
@@ -65,9 +137,6 @@ pub fn run() {
             commands::open_settings,
             commands::get_resource_status,
             commands::get_resource_endpoint,
-            commands::start_local_server,
-            commands::stop_local_server,
-            commands::is_server_running,
             commands::install_model,
             commands::switch_engine,
         ])
@@ -109,20 +178,32 @@ pub fn run() {
             *app.state::<AppState>().resource_manager.lock().unwrap() = Some(resource_manager);
             log::info!("Resource manager initialized at: {:?}", resources::default_resource_dir(&app_dir));
 
-            // Initialize server manager
-            let server_manager = ServerManager::new();
-            *app.state::<AppState>().server_manager.lock().unwrap() = Some(server_manager);
-            log::info!("Server manager initialized");
-
             // Initialize system tray
             match tray::create_tray(&handle) {
                 Ok(_) => log::info!("System tray created successfully"),
                 Err(e) => log::warn!("Failed to create system tray: {}", e),
             }
 
+            // Settings window behavior: closing it hides it instead of destroying it.
+            // This keeps the window alive so open_settings can find it and re-show
+            // on the next invocation, instead of hitting "window not found".
+            if let Some(settings_win) = handle.get_webview_window("settings") {
+                let win_for_hide = settings_win.clone();
+                settings_win.on_window_event(move |event| {
+                    if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                        api.prevent_close();
+                        let _ = win_for_hide.hide();
+                    }
+                });
+                log::info!("Settings window close-to-hide configured");
+            }
+
             log::info!("VoiceBoom initialized successfully");
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running VoiceBoom application");
+        .build(tauri::generate_context!())
+        .expect("error while building VoiceBoom application")
+        .run(|_app_handle, _event| {
+            // No explicit cleanup needed - sherpa-onnx resources are managed in-process
+        });
 }

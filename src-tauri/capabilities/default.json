@@ -25,6 +25,8 @@
     "global-shortcut:allow-register-all",
     "global-shortcut:allow-unregister",
     "global-shortcut:allow-unregister-all",
-    "store:default"
+    "store:default",
+    "dialog:default",
+    "dialog:allow-open"
   ]
 }

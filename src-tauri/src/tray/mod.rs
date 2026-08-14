@@ -128,9 +128,14 @@ fn handle_tray_event(tray: &TrayIcon<Runtime>, event: TrayIconEvent) {
             button_state: MouseButtonState::Up,
             ..
         } => {
-            // Left click toggles the floating window
+            // Left click shows and focuses the floating window.
+            // Deliberately not a toggle: a stray click used to hide the main UI,
+            // which reads as the app disappearing. Hiding stays on the menu item.
             let app = tray.app_handle();
-            toggle_floating_window(app);
+            if let Some(window) = app.get_webview_window("floating") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
         }
         TrayIconEvent::DoubleClick {
             button: MouseButton::Left,

@@ -1,7 +1,7 @@
 // Global shortcut manager for push-to-talk activation
 // Uses tauri-plugin-global-shortcut v2 API
 
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 /// Global shortcut manager for push-to-talk activation
