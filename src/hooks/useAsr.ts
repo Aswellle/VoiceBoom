@@ -51,9 +51,11 @@ export function useAsr(): UseAsrReturn {
       useAppStore.getState().showToast(event.payload);
     });
 
-    // Listen for ASR status messages
+    // Listen for ASR status messages — show as a toast, not as recognition
+    // partial text (status like "模型已就绪" was previously rendered into the
+    // live transcription area as fake output).
     const unlistenStatus = listen<string>('asr:status', (event) => {
-      useAppStore.getState().updatePartial(`⚠ ${event.payload}`);
+      useAppStore.getState().showToast(event.payload);
     });
 
     const unlistenLevel = listen<number>('audio:level', (event) => {
@@ -90,6 +92,10 @@ export function useAsr(): UseAsrReturn {
       isListeningRef.current = false;
       setIsListening(false);
       setStatus('idle');
+      // Show the error to the user — a silent failure looks like nothing happened
+      useAppStore.getState().showToast(
+        typeof error === 'string' ? error : '启动语音识别失败，请检查设置'
+      );
     }
   }, [setStatus, settings]);
 

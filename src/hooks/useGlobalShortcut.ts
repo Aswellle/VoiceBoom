@@ -1,12 +1,17 @@
 // useGlobalShortcut hook — listens for global hotkey events from Rust
 // Implements push-to-talk: hold to record, release to stop
 
-import { useEffect, useCallback, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
-import { useAsr } from './useAsr';
 
-export function useGlobalShortcut() {
-  const { startListening, stopListening } = useAsr();
+/// Callbacks are injected by the caller (FloatingWindow) so the global-hotkey
+/// path and the manual start/stop button share a single useAsr instance.
+/// Otherwise each useAsr() call gets its own isListeningRef and the two paths
+/// desync (stuck recording / swallowed hotkey).
+export function useGlobalShortcut(
+  startListening: () => Promise<void>,
+  stopListening: () => Promise<void>,
+) {
   const isPressedRef = useRef(false);
   const [isPressed, setIsPressed] = useState(false);
   // Use refs for callbacks to avoid re-subscribing listeners on every settings change (M9)

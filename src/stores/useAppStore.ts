@@ -39,7 +39,10 @@ export interface AppSettings {
 const DEFAULT_SETTINGS: AppSettings = {
   language: 'auto',
   maxChars: 80,
-  engine: 'openai_whisper',
+  // Default to the bundled local engine, not a cloud API that needs a key —
+  // the product promise is "works out of the box", so a first launch that
+  // silently defaults to an unconfigured cloud engine breaks that promise.
+  engine: 'funasr',
   apiKey: '',
   endpoint: '',
   shortcut: 'Ctrl+Space',
@@ -92,6 +95,10 @@ function generateId(): string {
   idCounter += 1;
   return Date.now().toString(36) + '-' + idCounter.toString(36);
 }
+
+/// Pending toast dismissal timer, so a new toast can cancel the previous one's
+/// countdown rather than being cut short by it.
+let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useAppStore = create<AppState>((set, get) => ({
   // Status
@@ -188,7 +195,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Toast notification (m7 fix)
   toastMessage: '',
   showToast: (message) => {
+    // Cancel any pending dismissal so a new toast gets its full duration
+    // instead of inheriting the previous one's timer.
+    if (toastTimer !== null) {
+      clearTimeout(toastTimer);
+      toastTimer = null;
+    }
     set({ toastMessage: message });
-    setTimeout(() => set({ toastMessage: '' }), 2000);
+    // Scale duration with message length — 2s was too short to finish reading
+    // longer errors. ~60ms per character, clamped to 4-10s.
+    const duration = Math.min(10000, Math.max(4000, message.length * 60));
+    toastTimer = setTimeout(() => {
+      set({ toastMessage: '' });
+      toastTimer = null;
+    }, duration);
   },
 }));

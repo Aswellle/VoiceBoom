@@ -2,13 +2,15 @@
 // Shows real-time recognition results with glassmorphism styling
 // Features: newest-first layout, text trimming, animations, drag support
 
-import { useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { invoke } from '@tauri-apps/api/core';
+import { listen } from '@tauri-apps/api/event';
 import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
 import { Waveform } from '../Waveform';
 import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
+import { useAsr } from '../../hooks/useAsr';
 
 /// Animation variants for text segments
 const segmentVariants = {
@@ -76,31 +78,125 @@ function SegmentItem({
 
 /// Main floating window component
 export function FloatingWindow() {
-  useGlobalShortcut();
+  // Single useAsr instance shared by both the global-hotkey path and the manual
+  // start/stop button, so they agree on the isListeningRef guard (prevents the
+  // stuck-recording / swallowed-hotkey desync).
+  const { startListening, stopListening } = useAsr();
+  useGlobalShortcut(startListening, stopListening);
 
   const status = useAppStore((s) => s.status);
   const segments = useAppStore((s) => s.segments);
   const currentPartial = useAppStore((s) => s.currentPartial);
   const settings = useAppStore((s) => s.settings);
+  const loadSettings = useAppStore((s) => s.loadSettings);
   const toastMessage = useAppStore((s) => s.toastMessage);
-  const setStatus = useAppStore((s) => s.setStatus);
+
+  // Engine readiness check — populated on mount and when engine switches.
+  // For local engines, checks if model files exist; for cloud engines,
+  // reports whether an API key is configured. Used to show "configure first"
+  // hints instead of "press shortcut" when the selected engine can't work.
+  const [engineReady, setEngineReady] = useState<boolean | null>(null);
+
+  // Check engine status on mount and when settings.engine changes
+  useEffect(() => {
+    invoke('switch_engine', { engine: settings.engine })
+      .then((result: any) => {
+        // Local engines report model_installed; cloud engines don't.
+        // For local, ready = all models present. For cloud, ready = has key.
+        const isLocal = result.is_local;
+        const ready = isLocal
+          ? (result.model_installed && result.tokens_installed && result.vad_installed)
+          : Boolean(settings.apiKey);
+        setEngineReady(ready);
+      })
+      .catch(() => setEngineReady(false));
+  }, [settings.engine, settings.apiKey]);
+
+  // Reload settings when the engine is switched so the label stays current
+  useEffect(() => {
+    const unlisten = listen('engine:switched', () => {
+      loadSettings().catch(console.error);
+    });
+    return () => {
+      unlisten.then((fn) => fn());
+    };
+  }, [loadSettings]);
+
+  // Audio flow diagnostics — heartbeat from the bridge task tells us whether
+  // microphone samples are actually reaching the ASR pipeline.
+  // Diagnostic state — visible in the UI so we can see what's happening
+  const [diag, setDiag] = useState({
+    shortcutRegistered: false,
+    shortcutPressed: false,
+    audioFrames: 0,
+    vadSpeech: false,
+    lastPartial: '',
+    lastFinal: '',
+    error: '',
+  });
+
+  // Listen for shortcut events
+  useEffect(() => {
+    const unPressed = listen('shortcut:pressed', () => {
+      setDiag((d) => ({ ...d, shortcutPressed: true }));
+    });
+    const unReleased = listen('shortcut:released', () => {
+      setDiag((d) => ({ ...d, shortcutPressed: false }));
+    });
+    return () => {
+      unPressed.then((f) => f());
+      unReleased.then((f) => f());
+    };
+  }, []);
+
+  // Listen for ASR events
+  useEffect(() => {
+    const unHeartbeat = listen<{ frames: number }>('asr:heartbeat', (e) => {
+      setDiag((d) => ({ ...d, audioFrames: e.payload.frames }));
+    });
+    const unStatus = listen<string>('asr:status', (e) => {
+      if (e.payload.includes('就绪') || e.payload.includes('ready')) {
+        setDiag((d) => ({ ...d, shortcutRegistered: true }));
+      }
+    });
+    const unError = listen<string>('asr:error', (e) => {
+      setDiag((d) => ({ ...d, error: e.payload }));
+    });
+    const unResult = listen<{ text: string; is_final: boolean }>('asr:result', (e) => {
+      if (e.payload.is_final) {
+        setDiag((d) => ({ ...d, lastFinal: e.payload.text, lastPartial: '' }));
+      } else {
+        setDiag((d) => ({ ...d, lastPartial: e.payload.text }));
+      }
+    });
+    return () => {
+      unHeartbeat.then((f) => f());
+      unStatus.then((f) => f());
+      unError.then((f) => f());
+      unResult.then((f) => f());
+    };
+  }, []);
 
   const isListening = status === 'listening';
   const hasContent = segments.length > 0 || currentPartial;
 
-  // Determine status text
+  // Status text with engine readiness awareness
   const statusText = isListening
-    ? '正在聆听...'
+    ? (diag.audioFrames > 0 ? `正在聆听... (${diag.audioFrames} 帧)` : '正在聆听...')
     : hasContent
     ? ''
+    : engineReady === false
+    ? '⚙️ 请先打开设置配置引擎'
+    : engineReady === null
+    ? '检查引擎状态...'
     : '按住快捷键说话';
 
   // Engine display label
   const engineLabel: Record<string, string> = {
     openai_whisper: 'Whisper API',
     deepgram: 'Deepgram',
-    whisper_cpp: 'Whisper 本地',
-    funasr: 'FunASR 本地',
+    whisper_cpp: 'SenseVoice', // Legacy ID, now maps to the same backend
+    funasr: 'SenseVoice',
   };
   const currentEngineLabel = engineLabel[settings.engine] || settings.engine;
 
@@ -147,17 +243,46 @@ export function FloatingWindow() {
           <span className="text-xs text-gray-400 italic flex-1">{statusText}</span>
         )}
 
+        {/* Diagnostic indicator — shows shortcut/audio/ASR state at a glance */}
+        <div className="flex items-center gap-1.5 text-[10px]" title="诊断: 快捷键/音频/识别状态">
+          <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutRegistered ? 'bg-green-400' : 'bg-red-400'}`} title={diag.shortcutRegistered ? '快捷键已注册' : '快捷键未注册'} />
+          <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutPressed ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} title={diag.shortcutPressed ? '快捷键按下' : '快捷键松开'} />
+          <span className={`w-1.5 h-1.5 rounded-full ${diag.audioFrames > 0 ? 'bg-blue-400' : 'bg-gray-400'}`} title={`音频帧: ${diag.audioFrames}`} />
+          {diag.error && <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={diag.error} />}
+        </div>
+
         {/* Current engine indicator */}
         <span className="text-[10px] px-2 py-0.5 bg-white/30 rounded-full text-gray-500 whitespace-nowrap" title={`当前引擎: ${currentEngineLabel}`}>
           {currentEngineLabel}
         </span>
 
+        {/* Manual start button — directly invokes Tauri commands to test the core pipeline */}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => {
+            if (isListening) {
+              stopListening();
+            } else {
+              startListening();
+            }
+          }}
+          className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
+            isListening
+              ? 'bg-red-500 text-white hover:bg-red-600'
+              : 'bg-green-500/80 text-white hover:bg-green-600'
+          }`}
+          title="点击开始/停止录音"
+        >
+          {isListening ? '停止' : '说话'}
+        </button>
+
         {/* Settings button */}
         <button
           onMouseDown={(e) => {
-            // Stop propagation so the parent drag handle doesn't intercept the click
+            // Stop propagation so the parent drag handle doesn't start dragging.
+            // Deliberately no preventDefault(): that suppressed the click event
+            // itself, so the gear stopped opening settings.
             e.stopPropagation();
-            e.preventDefault();
           }}
           onClick={() => invoke('open_settings').catch((err) => console.error('open_settings failed:', err))}
           className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
@@ -170,38 +295,52 @@ export function FloatingWindow() {
         </button>
       </div>
 
-      {/* Recognition results area */}
-      <div className="flex-1 overflow-hidden px-4 pb-3">
-        <AnimatePresence mode="popLayout">
-          {/* Partial (in-progress) text */}
-          {currentPartial && (
-            <motion.div
-              key="partial"
-              initial={settings.reduceMotion ? false : { opacity: 0 }}
-              animate={{ opacity: 0.6 }}
-              exit={{ opacity: 0 }}
-              className="mb-2"
-            >
-              <span
-                className="text-gray-500 dark:text-gray-400 italic"
-                style={{ fontSize: settings.fontSize * 0.9 }}
-              >
-                {currentPartial}...
-              </span>
-            </motion.div>
+      {/* Diagnostic text — shows exactly what's happening */}
+      <div className="px-4 pb-1">
+        <div className="text-[10px] text-gray-400 font-mono leading-tight">
+          {diag.error ? (
+            <span className="text-red-400">❌ {diag.error}</span>
+          ) : diag.lastPartial ? (
+            <span className="text-blue-300">{diag.lastPartial}</span>
+          ) : diag.lastFinal ? (
+            <span className="text-gray-200">{diag.lastFinal}</span>
+          ) : diag.shortcutPressed ? (
+            <span className="text-yellow-300">🎤 录音中... ({diag.audioFrames} 帧)</span>
+          ) : (
+            <span className="text-gray-500">
+              {diag.shortcutRegistered ? '✅ 就绪' : '⏳ 注册快捷键'} | 帧: {diag.audioFrames}
+            </span>
           )}
+        </div>
+      </div>
 
-          {/* Finalized segments — newest first */}
-          {[...segments].reverse().map((segment, index) => (
-            <SegmentItem
-              key={segment.id}
-              segment={segment}
-              isNewest={index === 0}
-              reduceMotion={settings.reduceMotion}
-              fontSize={settings.fontSize}
-            />
-          ))}
-        </AnimatePresence>
+      {/* Recognition results area — horizontal flowing text, wraps to next line */}
+      <div className="flex-1 overflow-hidden px-4 pb-3">
+        <div className="h-full overflow-y-auto">
+          {/* Combine all finalized text into a flowing paragraph, with the latest
+              partial appended at the end. This gives the "边说边出字" experience:
+              text fills the window width horizontally, then wraps to the next line. */}
+          <p
+            className="leading-relaxed break-words"
+            style={{ fontSize: settings.fontSize, color: 'var(--text-primary, #1f2937)' }}
+          >
+            {segments.map((segment) => (
+              <span key={segment.id}>
+                {segment.text}
+                {segment.language && (
+                  <span className="ml-1 text-[10px] text-gray-400 uppercase align-baseline">
+                    {segment.language === 'zh' ? '中' : segment.language}
+                  </span>
+                )}
+              </span>
+            ))}
+            {currentPartial && (
+              <span className="text-gray-400 italic opacity-70">
+                {currentPartial}…
+              </span>
+            )}
+          </p>
+        </div>
       </div>
 
       {/* m7 fix: Toast notification for copy feedback */}
@@ -210,7 +349,7 @@ export function FloatingWindow() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0 }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-gray-800/90 text-white text-xs rounded-full shadow-lg"
+          className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-2rem)] px-3 py-1.5 bg-gray-800/90 text-white text-xs rounded-2xl shadow-lg text-center leading-relaxed break-words"
         >
           {toastMessage}
         </motion.div>

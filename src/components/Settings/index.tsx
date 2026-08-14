@@ -5,6 +5,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
+import { open } from '@tauri-apps/plugin-dialog';
 
 type TabId = 'voice' | 'model' | 'local' | 'shortcuts' | 'display' | 'advanced' | 'about';
 
@@ -57,25 +58,25 @@ const ENGINES: EngineInfo[] = [
   },
   {
     id: 'whisper_cpp',
-    name: 'Whisper.cpp（本地）',
-    description: '本地离线运行，无需网络，保护隐私',
-    keyPlaceholder: '（本地服务无需 API Key）',
-    keyHelp: '本地模型不需要 API Key，但需要下载模型文件',
-    endpointPlaceholder: 'ws://localhost:8080/ws',
+    name: 'Whisper（本地）',
+    description: '多语言离线引擎，当前版本暂不可用，后续版本将整合',
+    keyPlaceholder: '（本地引擎无需 API Key）',
+    keyHelp: '本地引擎不需要 API Key',
+    endpointPlaceholder: '（暂不可用）',
     isLocal: true,
     downloadUrl: 'https://github.com/ggerganov/whisper.cpp',
-    downloadHelp: '下载 whisper.cpp 并运行本地 WebSocket 服务',
+    downloadHelp: '当前版本使用 SenseVoice，Whisper 支持将在后续版本加入',
   },
   {
     id: 'funasr',
-    name: 'FunASR（本地）',
-    description: '阿里达摩院中文语音识别，本地离线运行',
-    keyPlaceholder: '（本地服务无需 API Key）',
-    keyHelp: '本地模型不需要 API Key，但需要下载模型文件',
-    endpointPlaceholder: 'ws://localhost:9880/ws',
+    name: 'SenseVoice（本地）',
+    description: '阿里达摩院多语言引擎，内置离线运行，中文识别优秀',
+    keyPlaceholder: '（本地引擎无需 API Key）',
+    keyHelp: '本地引擎不需要 API Key',
+    endpointPlaceholder: '（自动配置）',
     isLocal: true,
-    downloadUrl: 'https://github.com/modelscope/FunASR',
-    downloadHelp: '下载 FunASR 并运行本地 WebSocket 服务',
+    downloadUrl: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17',
+    downloadHelp: '模型已内置，开箱即用',
   },
 ];
 
@@ -99,9 +100,9 @@ function Slider({
 }) {
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex justify-between text-sm">
-        <span className="text-gray-600">{label}</span>
-        <span className="text-gray-400">
+      <div className="flex justify-between gap-3 text-sm">
+        <span className="text-gray-600 min-w-0">{label}</span>
+        <span className="text-gray-400 shrink-0 whitespace-nowrap">
           {value}
           {unit}
         </span>
@@ -196,11 +197,11 @@ function Toggle({
   onChange: (v: boolean) => void;
 }) {
   return (
-    <label className="flex items-center justify-between cursor-pointer">
-      <span className="text-sm text-gray-600">{label}</span>
+    <label className="flex items-center justify-between gap-3 cursor-pointer">
+      <span className="text-sm text-gray-600 min-w-0">{label}</span>
       <div
         className={`
-          relative w-10 h-5 rounded-full transition-colors
+          relative w-10 h-5 shrink-0 rounded-full transition-colors
           ${checked ? 'bg-blue-500' : 'bg-gray-300'}
         `}
         onClick={() => onChange(!checked)}
@@ -265,14 +266,12 @@ function ModelTab() {
       .then((result) => {
         const status = result as any;
         setEngineStatus((prev) => ({ ...prev, [engineId]: status }));
-        // Show feedback for local engine automation
+        // Show feedback for local engine model check
         if (status.is_local) {
-          if (status.status === 'server_started') {
-            showToast(`${status.engine_name || engineId} 本地服务器已自动启动`);
+          if (status.status === 'ready') {
+            showToast('SenseVoice 本地引擎已就绪');
           } else if (status.status === 'model_missing') {
             showToast('请先安装本地模型文件（见「本地资源」标签页）');
-          } else if (status.server_running) {
-            showToast(`${engineId} 服务器运行中`);
           }
         }
       })
@@ -305,22 +304,22 @@ function ModelTab() {
                   : 'border-gray-200 hover:border-gray-300 bg-white'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium text-gray-800">{engine.name}</span>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-800 min-w-0 truncate">{engine.name}</span>
                 {engine.isLocal && (
-                  <span className="text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full">
+                  <span className="shrink-0 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">
                     本地离线
                   </span>
                 )}
                 {settings.engine === engine.id && (
-                  <span className="text-blue-500">
+                  <span className="text-blue-500 shrink-0 ml-auto">
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                       <polyline points="20 6 9 17 4 12"/>
                     </svg>
                   </span>
                 )}
               </div>
-              <p className="text-xs text-gray-500 mt-1">{engine.description}</p>
+              <p className="text-xs text-gray-500 mt-1 leading-relaxed">{engine.description}</p>
             </button>
           ))}
         </div>
@@ -329,12 +328,12 @@ function ModelTab() {
       {/* Engine-specific configuration */}
       <div className="border-t border-gray-200 pt-4">
         <div className="flex items-center gap-2 mb-3">
-          <span className="text-sm font-medium text-gray-700">
+          <span className="text-sm font-medium text-gray-700 min-w-0 truncate">
             {currentEngine.name} 配置
           </span>
           {currentEngine.isLocal && (
-            <span className="text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full">
-              需本地部署
+            <span className="shrink-0 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">
+              已内置
             </span>
           )}
         </div>
@@ -363,85 +362,75 @@ function ModelTab() {
             {/* Local engine - live automation status */}
             {(() => {
               const status = engineStatus[settings.engine];
-              const serverRunning = status?.server_running;
               const modelInstalled = status?.model_installed;
-              const serverBinaryInstalled = status?.server_binary_installed;
+              const tokensInstalled = status?.tokens_installed;
+              const vadInstalled = status?.vad_installed;
+              const fullyReady = Boolean(modelInstalled && tokensInstalled && vadInstalled);
 
               return (
                 <div className="flex flex-col gap-2">
-                  {/* Server binary status */}
-                  <div className={`p-3 rounded-lg border ${serverBinaryInstalled ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${serverBinaryInstalled ? 'bg-green-500' : 'bg-red-500'}`} />
-                      <span className="text-xs font-medium ${serverBinaryInstalled ? 'text-green-700' : 'text-red-700'}">
-                        {serverBinaryInstalled ? '服务器程序已内置' : '服务器程序未找到'}
-                      </span>
-                    </div>
-                  </div>
-
                   {/* Model status */}
-                  <div className={`p-3 rounded-lg border ${modelInstalled ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
+                  <div className={`p-3 rounded-lg border ${fullyReady ? 'bg-green-50 border-green-200' : 'bg-amber-50 border-amber-200'}`}>
                     <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${modelInstalled ? 'bg-green-500' : 'bg-amber-500'}`} />
-                      <span className={`text-xs font-medium ${modelInstalled ? 'text-green-700' : 'text-amber-700'}`}>
-                        {modelInstalled ? '模型文件已就绪' : '需要安装模型文件'}
+                      <span className={`w-2 h-2 rounded-full ${fullyReady ? 'bg-green-500' : 'bg-amber-500'}`} />
+                      <span className={`text-xs font-medium ${fullyReady ? 'text-green-700' : 'text-amber-700'}`}>
+                        {fullyReady ? '已就绪' : modelInstalled ? '缺少文件' : '未找到模型'}
                       </span>
                     </div>
                     {!modelInstalled && (
                       <p className="text-xs text-amber-600 mt-1">
-                        请前往「本地资源」标签页安装模型文件，或点击下方按钮。
+                        模型已内置，若提示未找到请查看「本地资源」标签页。
                       </p>
                     )}
                   </div>
 
-                  {/* Server running status */}
-                  {modelInstalled && (
-                    <div className={`p-3 rounded-lg border ${serverRunning ? 'bg-green-50 border-green-200' : 'bg-gray-50 border-gray-200'}`}>
+                  {/* Ready indicator — requires model + tokens + VAD */}
+                  {fullyReady && (
+                    <div className="p-3 rounded-lg border bg-green-50 border-green-200">
                       <div className="flex items-center gap-2">
-                        <span className={`w-2 h-2 rounded-full ${serverRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-400'}`} />
-                        <span className={`text-xs font-medium ${serverRunning ? 'text-green-700' : 'text-gray-600'}`}>
-                          {serverRunning ? '本地服务器运行中' : '本地服务器未启动'}
-                        </span>
+                        <span className="w-2 h-2 rounded-full bg-green-500" />
+                        <span className="text-xs font-medium text-green-700">可以开始使用</span>
                       </div>
-                      {serverRunning && status?.endpoint && (
-                        <p className="text-xs text-gray-500 mt-1">连接地址: <code>{status.endpoint}</code></p>
-                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        SenseVoice 本地引擎，无需网络连接
+                      </p>
                     </div>
-                  )}
-
-                  {/* Auto-config feedback */}
-                  {modelInstalled && !serverRunning && (
-                    <p className="text-xs text-gray-400">
-                      选择此引擎后将自动启动本地服务器，无需手动操作。
-                    </p>
                   )}
                 </div>
               );
             })()}
 
-            <TextInput
-              label="本地服务地址"
-              value={settings.endpoint}
-              onChange={(v) => updateSettings({ endpoint: v })}
-              placeholder={currentEngine.endpointPlaceholder}
-              helpText="本地 WebSocket 服务地址，默认自动配置无需修改"
-            />
+            {/* Local engines are fully self-configured: the model ships inside
+                the app and paths are resolved at start_recording time. No
+                address for the user to fill in. */}
           </div>
         )}
       </div>
 
       {/* Connection status indicator */}
       <div className="border-t border-gray-200 pt-4">
-        <div className="flex items-center gap-2">
-          <div className={`w-2 h-2 rounded-full ${!currentEngine.isLocal && settings.apiKey ? 'bg-green-500' : currentEngine.isLocal ? 'bg-blue-500' : 'bg-red-500'}`} />
-          <span className="text-xs text-gray-500">
-            {!currentEngine.isLocal && settings.apiKey
-              ? '已配置，可以开始语音识别'
-              : currentEngine.isLocal
-              ? '本地服务：请在「本地资源」标签页下载模型并启动服务器'
-              : '请填写 API Key 后使用'}
-          </span>
-        </div>
+        {(() => {
+          const localReady = Boolean(
+            engineStatus[settings.engine]?.model_installed &&
+              engineStatus[settings.engine]?.tokens_installed &&
+              engineStatus[settings.engine]?.vad_installed
+          );
+          const ok = currentEngine.isLocal ? localReady : Boolean(settings.apiKey);
+          return (
+            <div className="flex items-start gap-2">
+              <div className={`w-2 h-2 rounded-full mt-1 shrink-0 ${ok ? 'bg-green-500' : 'bg-amber-500'}`} />
+              <span className="text-xs text-gray-500 leading-relaxed">
+                {currentEngine.isLocal
+                  ? ok
+                    ? '本地引擎已就绪，按住快捷键即可开始说话'
+                    : '本地资源缺失，请前往「本地资源」标签页查看'
+                  : ok
+                  ? '已配置，可以开始语音识别'
+                  : '请填写 API Key 后使用'}
+              </span>
+            </div>
+          );
+        })()}
       </div>
     </div>
   );
@@ -564,19 +553,15 @@ function AboutTab() {
 
 /// Tab content: Local Resources management
 function LocalResourcesTab() {
+  const showToast = useAppStore((s) => s.showToast);
   const [resources, setResources] = useState<any[]>([]);
-  const [serverStatus, setServerStatus] = useState<Record<string, boolean>>({});
+  const [busy, setBusy] = useState<Record<string, boolean>>({});
 
+  // sherpa-onnx does in-process inference — no server process to start/stop,
+  // so status only needs the resource file check (no port probing).
   const refreshStatus = () => {
     invoke('get_resource_status').then((status) => {
       setResources(status as any[]);
-      // Also check server running status
-      const engines = ['whisper_cpp', 'funasr'];
-      engines.forEach((eng) => {
-        invoke('is_server_running', { engine: eng }).then((running) => {
-          setServerStatus((prev) => ({ ...prev, [eng]: running as boolean }));
-        }).catch(() => {});
-      });
     }).catch(() => {});
   };
 
@@ -586,37 +571,38 @@ function LocalResourcesTab() {
     return () => clearInterval(interval);
   }, []);
 
-  const handleStartServer = async (engine: string) => {
-    invoke('start_local_server', { engine, language: 'auto' })
-      .then(() => {
-        refreshStatus();
-      })
-      .catch((e) => {
-        alert('启动服务器失败: ' + e);
-      });
-  };
-
-  const handleStopServer = async (engine: string) => {
-    invoke('stop_local_server', { engine })
-      .then(() => refreshStatus())
-      .catch(() => {});
-  };
-
+  // Use a native file picker instead of prompt(): window.prompt is unreliable
+  // inside the Tauri WebView and typing a full path by hand is error-prone.
+  // Multi-select because FunASR needs two GGUF files (ASR model + FSMN VAD).
   const handleInstallModel = async (engine: string, engineName: string) => {
-    const path = prompt(
-      `请输入 ${engineName} 模型文件的完整路径:\n\n` +
-      `支持指定模型文件，或指定包含模型的目录。\n\n` +
-      `例如: C:\\models\\ggml-base.bin`
-    );
-    if (path && path.trim()) {
-      invoke('install_model', { engine, modelPath: path.trim() })
-        .then(() => {
-          alert(`${engineName} 模型安装成功！`);
-          refreshStatus();
-        })
-        .catch((e) => {
-          alert('模型安装失败: ' + e);
-        });
+    try {
+      const selected = await open({
+        title: `选择 ${engineName} 模型文件（可多选）`,
+        multiple: true,
+        directory: false,
+        filters: [{ name: '模型文件', extensions: ['onnx', 'txt', 'bin', 'gguf'] }],
+      });
+      const paths = Array.isArray(selected) ? selected : selected ? [selected] : [];
+      if (paths.length === 0) return;
+
+      setBusy((p) => ({ ...p, [engine]: true }));
+      const res = (await invoke('install_model', { engine, modelPaths: paths })) as any;
+
+      const count = res?.installed?.length ?? paths.length;
+      if (res?.vad_required && !res?.vad_exists) {
+        showToast(
+          `已安装 ${count} 个文件，但还缺少 VAD 模型 ${res.vad_filename}，请一并选择安装`
+        );
+      } else if (!res?.model_exists) {
+        showToast(`已复制 ${count} 个文件，但未识别到可用的识别模型，请确认选择的文件`);
+      } else {
+        showToast(`${engineName} 模型安装成功（${count} 个文件）`);
+      }
+    } catch (e) {
+      showToast(`模型安装失败: ${e}`);
+    } finally {
+      setBusy((p) => ({ ...p, [engine]: false }));
+      refreshStatus();
     }
   };
 
@@ -629,36 +615,35 @@ function LocalResourcesTab() {
   };
 
   const engines = [
-    { id: 'whisper_cpp', name: 'Whisper.cpp', description: '本地离线语音识别，支持多语言', modelUrl: 'https://huggingface.co/ggerganov/whisper.cpp' },
-    { id: 'funasr', name: 'FunASR', description: '阿里达摩院中文语音识别，离线运行', modelUrl: 'https://huggingface.co/FunAudioLLM/SenseVoiceSmall-GGUF' },
+    { id: 'sensevoice', name: 'SenseVoice', description: '阿里达摩院多语言语音识别，本地离线运行，中文识别优秀', modelUrl: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17' },
   ];
 
   return (
     <div className="flex flex-col gap-4">
-      <p className="text-sm text-gray-500">
-        管理本地语音识别服务。服务器程序已内置，需要下载模型文件后才能使用。
+      <p className="text-sm text-gray-500 leading-relaxed">
+        查看本地语音识别状态。模型文件已内置，打开即用。
       </p>
 
       {engines.map((engine) => {
         const resource = resources.find((r) => r.engine === engine.id);
         const isReady = resource?.is_ready;
-        const serverRunning = serverStatus[engine.id];
-        const serverBinaryExists = resource?.server_binary_exists;
         const modelExists = resource?.model_file_exists;
+        const tokensExists = resource?.tokens_file_exists;
+        const vadExists = resource?.vad_model_exists;
 
         return (
           <div key={engine.id} className="p-4 rounded-lg border border-gray-200 bg-white">
-            <div className="flex items-center justify-between">
-              <div>
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
                 <h3 className="text-sm font-medium text-gray-800">{engine.name}</h3>
                 <p className="text-xs text-gray-500 mt-0.5">{engine.description}</p>
               </div>
               {isReady ? (
-                <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">已就绪</span>
-              ) : serverBinaryExists ? (
-                <span className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full">需模型</span>
+                <span className="shrink-0 text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full whitespace-nowrap">已就绪</span>
+              ) : modelExists ? (
+                <span className="shrink-0 text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded-full whitespace-nowrap">缺少文件</span>
               ) : (
-                <span className="text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-full">未安装</span>
+                <span className="shrink-0 text-xs px-2 py-1 bg-gray-100 text-gray-500 rounded-full whitespace-nowrap">未安装</span>
               )}
             </div>
 
@@ -667,80 +652,74 @@ function LocalResourcesTab() {
               <div className="mt-3 pt-3 border-t border-gray-100">
                 <div className="grid grid-cols-2 gap-2 text-xs">
                   <div className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${serverBinaryExists ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <span className="text-gray-500">服务器程序</span>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${modelExists ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">语音识别</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${modelExists ? 'bg-green-500' : 'bg-gray-300'}`} />
-                    <span className="text-gray-500">模型文件</span>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${tokensExists ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">语言词库</span>
                   </div>
                   <div className="flex items-center gap-1">
-                    <span className={`w-2 h-2 rounded-full ${serverRunning ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
-                    <span className="text-gray-500">{serverRunning ? '运行中' : '已停止'}</span>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${vadExists ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="text-gray-500">语音检测</span>
                   </div>
                   <div className="text-gray-500">
                     大小: <span className="text-gray-700">{formatSize(resource.size_bytes)}</span>
                   </div>
                 </div>
+                {resource && resource.is_bundled && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    模型文件已随应用内置，无需额外下载
+                  </p>
+                )}
+                {resource && !resource.is_bundled && (
+                  <p className="text-xs text-gray-400 mt-2">
+                    使用自定义模型文件
+                  </p>
+                )}
               </div>
             )}
 
-            {/* Model download guidance */}
-            {serverBinaryExists && !modelExists && (
+            {/* Guidance when model files are missing or incomplete */}
+            {!isReady && (
               <div className="mt-3 p-3 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-xs text-amber-800 font-medium">需要安装模型文件</p>
-                <p className="text-xs text-amber-600 mt-1">
-                  需要下载 <b>{resource?.default_model_filename}</b> 并安装后才能使用。
+                <p className="text-xs text-amber-800 font-medium">
+                  {modelExists ? '文件不完整' : '未找到模型文件'}
                 </p>
-                <div className="mt-2 flex gap-2">
+                <p className="text-xs text-amber-600 mt-1 leading-relaxed">
+                  需要三个文件：<b>{resource?.default_model_filename}</b>（识别模型）、
+                  <b>{resource?.tokens_filename}</b>（词表）和
+                  <b>{resource?.vad_filename}</b>（语音检测）。下方按钮支持一次多选。
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
                   <button
                     onClick={() => handleInstallModel(engine.id, engine.name)}
-                    className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors"
+                    disabled={busy[engine.id]}
+                    className="px-3 py-1.5 bg-blue-500 text-white text-xs rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                   >
-                    从本地路径安装模型
+                    {busy[engine.id] ? '安装中…' : '选择文件安装'}
                   </button>
                   <a
                     href={engine.modelUrl}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="inline-block px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors"
+                    className="inline-block px-3 py-1.5 bg-amber-500 text-white text-xs rounded-lg hover:bg-amber-600 transition-colors whitespace-nowrap"
                   >
-                    前往下载模型
+                    下载模型
                   </a>
                 </div>
-                <p className="text-xs text-amber-500 mt-2">
-                  安装后模型将保存到: <code className="bg-amber-100 px-1 rounded">{resource?.path}\models\</code>
+                <p className="text-xs text-amber-500 mt-2 leading-relaxed">
+                  也可以把下载的文件放到应用程序同目录的 models 文件夹，重启后自动加载。
                 </p>
               </div>
             )}
-
-            {/* Action buttons */}
-            <div className="mt-3 flex gap-2">
-              {isReady && !serverRunning && (
-                <button
-                  onClick={() => handleStartServer(engine.id)}
-                  className="px-3 py-1.5 bg-green-500 text-white text-xs rounded-lg hover:bg-green-600 transition-colors"
-                >
-                  启动服务器
-                </button>
-              )}
-              {serverRunning && (
-                <button
-                  onClick={() => handleStopServer(engine.id)}
-                  className="px-3 py-1.5 bg-red-500 text-white text-xs rounded-lg hover:bg-red-600 transition-colors"
-                >
-                  停止服务器
-                </button>
-              )}
-            </div>
           </div>
         );
       })}
 
       <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
-        <p className="text-xs text-blue-600">
-          💡 提示：服务器程序已内置在应用中，首次启动会自动解压。
-          模型文件需要单独下载并放到对应目录的 models 文件夹中。
+        <p className="text-xs text-blue-600 leading-relaxed">
+          💡 模型文件已内置，正常情况下无需额外操作。此页面用于查看状态或安装自定义模型。
         </p>
       </div>
     </div>
@@ -749,7 +728,10 @@ function LocalResourcesTab() {
 
 /// Main settings panel
 export function SettingsPanel() {
-  const [activeTab, setActiveTab] = useState<TabId>('model'); // Default to model tab for first-time setup
+  const [activeTab, setActiveTab] = useState<TabId>('local'); // Default to local tab so users see bundled model status first
+  // The settings window is a separate WebView with its own store instance, so it
+  // needs its own toast surface — showToast calls here were previously invisible.
+  const toastMessage = useAppStore((s) => s.toastMessage);
 
   const renderTab = () => {
     switch (activeTab) {
@@ -771,9 +753,9 @@ export function SettingsPanel() {
   };
 
   return (
-    <div className="flex h-full bg-gray-50">
-      {/* Sidebar tabs */}
-      <nav className="w-40 bg-white border-r border-gray-200 py-4">
+    <div className="relative flex h-full overflow-hidden bg-gray-50">
+      {/* Sidebar tabs — shrink-0 so it never collapses and push content out */}
+      <nav className="w-36 shrink-0 overflow-y-auto bg-white border-r border-gray-200 py-4">
         {TABS.map((tab) => (
           <button
             key={tab.id}
@@ -792,17 +774,31 @@ export function SettingsPanel() {
         ))}
       </nav>
 
-      {/* Tab content */}
-      <main className="flex-1 p-6 overflow-y-auto">
+      {/* Tab content — min-w-0 lets flex children shrink so long strings wrap
+          inside the panel instead of pushing content past the viewport */}
+      <main className="flex-1 min-w-0 p-5 overflow-y-auto overflow-x-hidden">
         <motion.div
           key={activeTab}
           initial={{ opacity: 0, y: 5 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.15 }}
+          className="min-w-0 break-words"
         >
           {renderTab()}
         </motion.div>
       </main>
+
+      {/* Toast surface for this window */}
+      {toastMessage && (
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0 }}
+          className="absolute bottom-5 left-1/2 -translate-x-1/2 max-w-[calc(100%-3rem)] px-4 py-2 bg-gray-800/95 text-white text-xs rounded-2xl shadow-lg z-50 text-center leading-relaxed break-words"
+        >
+          {toastMessage}
+        </motion.div>
+      )}
     </div>
   );
 }

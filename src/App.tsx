@@ -29,6 +29,7 @@ function getWindowLabel(): string {
 export default function App() {
   const label = getWindowLabel();
   const isSettingsWindow = label === 'settings';
+
   const settings = useAppStore((s) => s.settings);
   const loadSettings = useAppStore((s) => s.loadSettings);
   const updateSettings = useAppStore((s) => s.updateSettings);
@@ -43,23 +44,35 @@ export default function App() {
     }
   }, [settings.theme]);
 
-  // Register global shortcut on startup
+  // Load persisted settings on startup (all windows need the real settings)
   useEffect(() => {
-    // Load persisted settings first
     loadSettings();
-
-    // Register the push-to-talk shortcut
-    invoke('register_shortcut', { shortcut: settings.shortcut }).catch((e) => {
-      console.error('Failed to register shortcut:', e);
-    });
   }, []); // Only run once on mount
 
-  // Re-register shortcut when it changes in settings
+  // Register global shortcut on startup — ONLY in the floating window.
+  // The settings window runs the same App component; registering there would
+  // fight over the same global hotkey with the floating window.
   useEffect(() => {
-    invoke('register_shortcut', { shortcut: settings.shortcut }).catch((e) => {
-      console.error('Failed to update shortcut:', e);
-    });
-  }, [settings.shortcut]);
+    if (isSettingsWindow) return;
+    invoke('register_shortcut', { shortcut: settings.shortcut })
+      .then(() => console.log('[App] Shortcut registered:', settings.shortcut))
+      .catch((e) => {
+        // Use alert for visibility in GUI app
+        alert(`快捷键注册失败: ${e}\n请尝试使用其他快捷键组合`);
+        console.error('[App] Failed to register shortcut:', e);
+      });
+  }, []); // Only run once on mount
+
+  // Re-register shortcut when it changes in settings (floating window only)
+  useEffect(() => {
+    if (isSettingsWindow) return;
+    invoke('register_shortcut', { shortcut: settings.shortcut })
+      .then(() => console.log('[App] Shortcut re-registered:', settings.shortcut))
+      .catch((e) => {
+        alert(`快捷键更新失败: ${e}`);
+        console.error('[App] Failed to update shortcut:', e);
+      });
+  }, [settings.shortcut, isSettingsWindow]);
 
   // Listen for tray menu events (engine/language changes)
   useEffect(() => {
@@ -70,8 +83,8 @@ export default function App() {
       invoke('switch_engine', { engine: engineId })
         .then((result) => {
           const status = result as any;
-          if (status.is_local && status.status === 'server_started') {
-            useAppStore.getState().showToast('本地服务器已自动启动');
+          if (status.is_local && status.status === 'ready') {
+            useAppStore.getState().showToast('SenseVoice 本地引擎已就绪');
           } else if (status.is_local && status.status === 'model_missing') {
             useAppStore.getState().showToast('需要安装本地模型文件');
           }
