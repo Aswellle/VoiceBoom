@@ -69,7 +69,10 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
 
                     loop {
                         tokio::select! {
-                            Some(audio) = rx_audio.recv() => {
+                            audio = rx_audio.recv() => {
+                                // Sender dropped (close()) closes the channel; stop
+                                // the task so the WebSocket is torn down cleanly.
+                                let Some(audio) = audio else { break };
                                 // Convert f32 samples to PCM16 bytes
                                 let pcm_bytes: Vec<u8> = audio.iter()
                                     .flat_map(|&s| {

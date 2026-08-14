@@ -79,17 +79,21 @@ export default function App() {
     const unlistenEngine = listen<string>('tray:set-engine', (event) => {
       const engineId = event.payload;
       updateSettings({ engine: engineId as any });
-      // Automation: switch_engine auto-configures local servers
-      invoke('switch_engine', { engine: engineId })
-        .then((result) => {
-          const status = result as any;
-          if (status.is_local && status.status === 'ready') {
-            useAppStore.getState().showToast('SenseVoice 本地引擎已就绪');
-          } else if (status.is_local && status.status === 'model_missing') {
-            useAppStore.getState().showToast('需要安装本地模型文件');
-          }
-        })
-        .catch(() => {});
+      // Only the floating window drives the backend switch_engine check; the
+      // settings window runs the same App component and would otherwise
+      // double-invoke it (duplicate engine:switched + asr:status events).
+      if (!isSettingsWindow) {
+        invoke('switch_engine', { engine: engineId })
+          .then((result) => {
+            const status = result as any;
+            if (status.is_local && status.status === 'ready') {
+              useAppStore.getState().showToast('SenseVoice 本地引擎已就绪');
+            } else if (status.is_local && status.status === 'model_missing') {
+              useAppStore.getState().showToast('需要安装本地模型文件');
+            }
+          })
+          .catch(() => {});
+      }
     });
     const unlistenLanguage = listen<string>('tray:set-language', (event) => {
       updateSettings({ language: event.payload });

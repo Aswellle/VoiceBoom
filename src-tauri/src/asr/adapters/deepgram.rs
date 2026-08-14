@@ -71,7 +71,10 @@ impl StreamingAsrEngine for DeepgramAdapter {
 
                     loop {
                         tokio::select! {
-                            Some(audio) = rx_audio.recv() => {
+                            audio = rx_audio.recv() => {
+                                // Sender dropped (close()) closes the channel; stop
+                                // the task so the WebSocket is torn down cleanly.
+                                let Some(audio) = audio else { break };
                                 if audio.is_empty() {
                                     // Empty audio = flush signal
                                     let _ = ws_stream.send(

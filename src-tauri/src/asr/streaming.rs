@@ -63,6 +63,14 @@ impl AsrManager {
 
         let mut engine = engine;
         engine.initialize(config.clone()).await?;
+        // Close the previous engine before replacing it so a cloud adapter's
+        // WebSocket task doesn't linger until the socket errors. The local
+        // adapter is reused above and never reaches this path, so this only
+        // runs when actually rebuilding (cloud engines, or local config change).
+        if let Some(old) = self.engine.take() {
+            let mut eng = old.lock().await;
+            let _ = eng.close().await;
+        }
         self.engine = Some(Arc::new(Mutex::new(engine)));
         self.config = Some(config);
         Ok(())
