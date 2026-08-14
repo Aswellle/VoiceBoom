@@ -33,6 +33,7 @@ export default function App() {
   const settings = useAppStore((s) => s.settings);
   const loadSettings = useAppStore((s) => s.loadSettings);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const setShortcutRegistered = useAppStore((s) => s.setShortcutRegistered);
 
   // Apply theme to document
   useEffect(() => {
@@ -55,8 +56,12 @@ export default function App() {
   useEffect(() => {
     if (isSettingsWindow) return;
     invoke('register_shortcut', { shortcut: settings.shortcut })
-      .then(() => console.log('[App] Shortcut registered:', settings.shortcut))
+      .then(() => {
+        setShortcutRegistered(true);
+        console.log('[App] Shortcut registered:', settings.shortcut);
+      })
       .catch((e) => {
+        setShortcutRegistered(false);
         // Use alert for visibility in GUI app
         alert(`快捷键注册失败: ${e}\n请尝试使用其他快捷键组合`);
         console.error('[App] Failed to register shortcut:', e);
@@ -67,8 +72,12 @@ export default function App() {
   useEffect(() => {
     if (isSettingsWindow) return;
     invoke('register_shortcut', { shortcut: settings.shortcut })
-      .then(() => console.log('[App] Shortcut re-registered:', settings.shortcut))
+      .then(() => {
+        setShortcutRegistered(true);
+        console.log('[App] Shortcut re-registered:', settings.shortcut);
+      })
       .catch((e) => {
+        setShortcutRegistered(false);
         alert(`快捷键更新失败: ${e}`);
         console.error('[App] Failed to update shortcut:', e);
       });

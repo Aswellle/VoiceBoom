@@ -79,6 +79,18 @@ impl LocalAsrAdapter {
             ));
         }
 
+        // Fail loudly on empty paths rather than letting sherpa-onnx's model
+        // loader surface a cryptic error.
+        if parts[0].trim().is_empty()
+            || parts[1].trim().is_empty()
+            || parts[2].trim().is_empty()
+        {
+            return Err(anyhow::anyhow!(
+                "Local engine endpoint has an empty vad/model/tokens path: {:?}",
+                endpoint
+            ));
+        }
+
         let (vad_model, onnx_model, tokens) = (parts[0], parts[1], parts[2]);
 
         // Create Silero VAD

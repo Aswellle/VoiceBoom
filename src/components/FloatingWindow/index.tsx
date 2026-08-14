@@ -90,6 +90,8 @@ export function FloatingWindow() {
   const settings = useAppStore((s) => s.settings);
   const loadSettings = useAppStore((s) => s.loadSettings);
   const toastMessage = useAppStore((s) => s.toastMessage);
+  const settingsLoaded = useAppStore((s) => s.settingsLoaded);
+  const shortcutRegistered = useAppStore((s) => s.shortcutRegistered);
 
   // Engine readiness check — populated on mount and when engine switches.
   // For local engines, checks if model files exist; for cloud engines,
@@ -97,8 +99,11 @@ export function FloatingWindow() {
   // hints instead of "press shortcut" when the selected engine can't work.
   const [engineReady, setEngineReady] = useState<boolean | null>(null);
 
-  // Check engine status on mount and when settings.engine changes
+  // Check engine status on mount and when settings.engine changes. Skip until
+  // initial settings are loaded so we don't probe the default engine before
+  // loadSettings resolves (would show a transiently wrong readiness hint).
   useEffect(() => {
+    if (!settingsLoaded) return;
     invoke('switch_engine', { engine: settings.engine })
       .then((result: any) => {
         // Local engines report model_installed; cloud engines don't.
@@ -110,7 +115,7 @@ export function FloatingWindow() {
         setEngineReady(ready);
       })
       .catch(() => setEngineReady(false));
-  }, [settings.engine, settings.apiKey]);
+  }, [settings.engine, settings.apiKey, settingsLoaded]);
 
   // Reload settings when the engine is switched so the label stays current
   useEffect(() => {
@@ -126,10 +131,8 @@ export function FloatingWindow() {
   // microphone samples are actually reaching the ASR pipeline.
   // Diagnostic state — visible in the UI so we can see what's happening
   const [diag, setDiag] = useState({
-    shortcutRegistered: false,
     shortcutPressed: false,
     audioFrames: 0,
-    vadSpeech: false,
     lastPartial: '',
     lastFinal: '',
     error: '',
@@ -154,11 +157,6 @@ export function FloatingWindow() {
     const unHeartbeat = listen<{ frames: number }>('asr:heartbeat', (e) => {
       setDiag((d) => ({ ...d, audioFrames: e.payload.frames }));
     });
-    const unStatus = listen<string>('asr:status', (e) => {
-      if (e.payload.includes('就绪') || e.payload.includes('ready')) {
-        setDiag((d) => ({ ...d, shortcutRegistered: true }));
-      }
-    });
     const unError = listen<string>('asr:error', (e) => {
       setDiag((d) => ({ ...d, error: e.payload }));
     });
@@ -171,7 +169,6 @@ export function FloatingWindow() {
     });
     return () => {
       unHeartbeat.then((f) => f());
-      unStatus.then((f) => f());
       unError.then((f) => f());
       unResult.then((f) => f());
     };
@@ -245,7 +242,7 @@ export function FloatingWindow() {
 
         {/* Diagnostic indicator — shows shortcut/audio/ASR state at a glance */}
         <div className="flex items-center gap-1.5 text-[10px]" title="诊断: 快捷键/音频/识别状态">
-          <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutRegistered ? 'bg-green-400' : 'bg-red-400'}`} title={diag.shortcutRegistered ? '快捷键已注册' : '快捷键未注册'} />
+          <span className={`w-1.5 h-1.5 rounded-full ${shortcutRegistered ? 'bg-green-400' : 'bg-red-400'}`} title={shortcutRegistered ? '快捷键已注册' : '快捷键未注册'} />
           <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutPressed ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} title={diag.shortcutPressed ? '快捷键按下' : '快捷键松开'} />
           <span className={`w-1.5 h-1.5 rounded-full ${diag.audioFrames > 0 ? 'bg-blue-400' : 'bg-gray-400'}`} title={`音频帧: ${diag.audioFrames}`} />
           {diag.error && <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={diag.error} />}
@@ -308,7 +305,7 @@ export function FloatingWindow() {
             <span className="text-yellow-300">🎤 录音中... ({diag.audioFrames} 帧)</span>
           ) : (
             <span className="text-gray-500">
-              {diag.shortcutRegistered ? '✅ 就绪' : '⏳ 注册快捷键'} | 帧: {diag.audioFrames}
+              {shortcutRegistered ? '✅ 就绪' : '⏳ 注册快捷键'} | 帧: {diag.audioFrames}
             </span>
           )}
         </div>

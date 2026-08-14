@@ -84,6 +84,13 @@ interface AppState {
   audioLevel: number;
   setAudioLevel: (level: number) => void;
 
+  // Whether initial settings have been loaded from the DB (avoids running the
+  // engine-readiness check against defaults before loadSettings resolves).
+  settingsLoaded: boolean;
+  // Whether the global shortcut is currently registered (set by App.tsx).
+  shortcutRegistered: boolean;
+  setShortcutRegistered: (registered: boolean) => void;
+
   // Toast notification (m7 fix)
   toastMessage: string;
   showToast: (message: string) => void;
@@ -178,6 +185,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load settings:', e);
+    } finally {
+      set({ settingsLoaded: true });
     }
   },
   resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
@@ -191,6 +200,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Audio level
   audioLevel: 0,
   setAudioLevel: (level) => set({ audioLevel: level }),
+
+  settingsLoaded: false,
+  shortcutRegistered: false,
+  setShortcutRegistered: (registered) => set({ shortcutRegistered: registered }),
 
   // Toast notification (m7 fix)
   toastMessage: '',
