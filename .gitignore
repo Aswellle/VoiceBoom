@@ -26,3 +26,14 @@ dist-ssr
 # Tauri
 src-tauri/target
 src-tauri/Cargo.lock
+
+# Build artifacts & bundled binaries (regenerable / downloadable / obsolete)
+installers/
+ASR-Resources/
+src-tauri/embedded_resources/
+src-tauri/resources/
+src-tauri/asr-bundle/
+models/
+portable/
+src-tauri/models/
+*.pdb
