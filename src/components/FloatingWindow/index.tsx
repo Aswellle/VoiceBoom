@@ -82,6 +82,8 @@ export function FloatingWindow() {
   // start/stop button, so they agree on the isListeningRef guard (prevents the
   // stuck-recording / swallowed-hotkey desync).
   const { startListening, stopListening } = useAsr();
+  // Sets up global-hotkey push-to-talk; no return value needed (FloatingWindow
+  // drives its listening state from the store).
   useGlobalShortcut(startListening, stopListening);
 
   const status = useAppStore((s) => s.status);

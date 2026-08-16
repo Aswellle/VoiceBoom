@@ -1,7 +1,7 @@
 // useGlobalShortcut hook — listens for global hotkey events from Rust
 // Implements push-to-talk: hold to record, release to stop
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { listen } from '@tauri-apps/api/event';
 
 /// Callbacks are injected by the caller (FloatingWindow) so the global-hotkey
@@ -13,7 +13,6 @@ export function useGlobalShortcut(
   stopListening: () => Promise<void>,
 ) {
   const isPressedRef = useRef(false);
-  const [isPressed, setIsPressed] = useState(false);
   // Use refs for callbacks to avoid re-subscribing listeners on every settings change (M9)
   const startRef = useRef(startListening);
   const stopRef = useRef(stopListening);
@@ -25,7 +24,6 @@ export function useGlobalShortcut(
     const unlistenPressed = listen<string>('shortcut:pressed', () => {
       if (!isPressedRef.current) {
         isPressedRef.current = true;
-        setIsPressed(true);
         startRef.current();
       }
     });
@@ -33,7 +31,6 @@ export function useGlobalShortcut(
     const unlistenReleased = listen<string>('shortcut:released', () => {
       if (isPressedRef.current) {
         isPressedRef.current = false;
-        setIsPressed(false);
         stopRef.current();
       }
     });
@@ -43,6 +40,4 @@ export function useGlobalShortcut(
       unlistenReleased.then((f) => f());
     };
   }, []); // Stable: uses refs for callbacks, no re-subscribe on settings change
-
-  return { isPressed };
 }
