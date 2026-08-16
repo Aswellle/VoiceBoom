@@ -101,7 +101,9 @@ export default function App() {
               useAppStore.getState().showToast('需要安装本地模型文件');
             }
           })
-          .catch(() => {});
+          .catch(() => {
+            useAppStore.getState().showToast('引擎状态检查失败');
+          });
       }
     });
     const unlistenLanguage = listen<string>('tray:set-language', (event) => {

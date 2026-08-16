@@ -7,9 +7,13 @@ import { useAppStore } from '../../stores/useAppStore';
 const BAR_COUNT = 12;
 
 export function Waveform() {
-  const audioLevel = useAppStore((s) => s.audioLevel);
-  const status = useAppStore((s) => s.status);
-  const reduceMotion = useAppStore((s) => s.settings.reduceMotion);
+  // Single selector instead of three — avoids up to 3 separate re-renders per
+  // store change.
+  const { audioLevel, status, reduceMotion } = useAppStore((s) => ({
+    audioLevel: s.audioLevel,
+    status: s.status,
+    reduceMotion: s.settings.reduceMotion,
+  }));
 
   const isListening = status === 'listening';
 

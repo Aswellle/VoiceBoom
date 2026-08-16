@@ -185,6 +185,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     } catch (e) {
       console.error('Failed to load settings:', e);
+      useAppStore.getState().showToast('加载设置失败，将使用默认配置');
     } finally {
       set({ settingsLoaded: true });
     }
