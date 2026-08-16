@@ -130,14 +130,11 @@ export function FloatingWindow() {
   }, [loadSettings]);
 
   // Audio flow diagnostics — heartbeat from the bridge task tells us whether
-  // microphone samples are actually reaching the ASR pipeline.
-  // Diagnostic state — visible in the UI so we can see what's happening
+  // microphone samples are actually reaching the ASR pipeline. Only holds
+  // genuinely diagnostic data (not duplicated store state).
   const [diag, setDiag] = useState({
     shortcutPressed: false,
     audioFrames: 0,
-    lastPartial: '',
-    lastFinal: '',
-    error: '',
   });
 
   // Listen for shortcut events
@@ -154,25 +151,14 @@ export function FloatingWindow() {
     };
   }, []);
 
-  // Listen for ASR events
+  // Listen for ASR events — only diagnostic data goes into `diag`; recognition
+  // results flow through the store (currentPartial/segments/toastMessage).
   useEffect(() => {
     const unHeartbeat = listen<{ frames: number }>('asr:heartbeat', (e) => {
       setDiag((d) => ({ ...d, audioFrames: e.payload.frames }));
     });
-    const unError = listen<string>('asr:error', (e) => {
-      setDiag((d) => ({ ...d, error: e.payload }));
-    });
-    const unResult = listen<{ text: string; is_final: boolean }>('asr:result', (e) => {
-      if (e.payload.is_final) {
-        setDiag((d) => ({ ...d, lastFinal: e.payload.text, lastPartial: '' }));
-      } else {
-        setDiag((d) => ({ ...d, lastPartial: e.payload.text }));
-      }
-    });
     return () => {
       unHeartbeat.then((f) => f());
-      unError.then((f) => f());
-      unResult.then((f) => f());
     };
   }, []);
 
@@ -247,7 +233,7 @@ export function FloatingWindow() {
           <span className={`w-1.5 h-1.5 rounded-full ${shortcutRegistered ? 'bg-green-400' : 'bg-red-400'}`} title={shortcutRegistered ? '快捷键已注册' : '快捷键未注册'} />
           <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutPressed ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} title={diag.shortcutPressed ? '快捷键按下' : '快捷键松开'} />
           <span className={`w-1.5 h-1.5 rounded-full ${diag.audioFrames > 0 ? 'bg-blue-400' : 'bg-gray-400'}`} title={`音频帧: ${diag.audioFrames}`} />
-          {diag.error && <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={diag.error} />}
+          {toastMessage && <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={toastMessage} />}
         </div>
 
         {/* Current engine indicator */}
@@ -297,12 +283,10 @@ export function FloatingWindow() {
       {/* Diagnostic text — shows exactly what's happening */}
       <div className="px-4 pb-1">
         <div className="text-[10px] text-gray-400 font-mono leading-tight">
-          {diag.error ? (
-            <span className="text-red-400">❌ {diag.error}</span>
-          ) : diag.lastPartial ? (
-            <span className="text-blue-300">{diag.lastPartial}</span>
-          ) : diag.lastFinal ? (
-            <span className="text-gray-200">{diag.lastFinal}</span>
+          {toastMessage ? (
+            <span className="text-red-400">❌ {toastMessage}</span>
+          ) : currentPartial ? (
+            <span className="text-blue-300">{currentPartial}</span>
           ) : diag.shortcutPressed ? (
             <span className="text-yellow-300">🎤 录音中... ({diag.audioFrames} 帧)</span>
           ) : (
