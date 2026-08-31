@@ -4,7 +4,7 @@
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-1.80%2B-EA5800?logo=rust)](https://www.rust-lang.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
-[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+[![License](https://img.shields.io/badge/license-MIT%20%2B%20non--commercial-important)](./LICENSE)
 
 **实时流式智能语音输入法** — Real-time Streaming Voice Input Method
 
@@ -92,13 +92,6 @@ E2E 覆盖：应用启动、引擎标签、开始/停止按钮、设置按钮。
 
 > **不覆盖**（需真实麦克风 / 系统消息循环 / WebView2）：全局快捷键、实际录音、ASR 转写、桌面拖拽。
 
-### 测试环境安装位置（均避开 C 盘）
-
-| 组件 | 位置 |
-|---|---|
-| tauri-driver | `D:\cargo\bin\tauri-driver.exe`（`CARGO_HOME=D:\cargo`） |
-| msedgedriver | `D:\msedgedriver\msedgedriver.exe`（匹配 Edge 版本） |
-
 ## 项目结构
 
 
@@ -145,7 +138,9 @@ VoiceBoom/
 
 ## 许可证
 
-MIT License
+MIT License with Commercial Use Restriction — 详见 [LICENSE](./LICENSE)。
+
+本软件在 MIT 许可证基础上附加**商业化使用限制**：个人学习、研究、非商业用途可自由使用与分发；**任何商业化使用（销售、授权、嵌入商业产品等）须事先获得作者（wellerlee820@163.com）的书面许可**。
 
 ---
 
