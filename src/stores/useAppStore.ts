@@ -132,10 +132,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       const allText = state.segments.map((s) => s.text).join('');
       if (allText.length <= maxChars) return {};
 
-      // m6 fix: Remove oldest segments until under limit (allow removing all but keep at least 1)
+      // m6 fix: Remove oldest segments until under limit, but always keep at
+      // the most recent segment so the transcription area never goes blank.
       const newSegments = [...state.segments];
       let currentLength = allText.length;
-      while (currentLength > maxChars && newSegments.length > 0) {
+      while (currentLength > maxChars && newSegments.length > 1) {
         const removed = newSegments.shift();
         if (removed) currentLength -= removed.text.length;
       }
@@ -159,8 +160,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().applyMaxChars(partial.maxChars);
     }
   },
-  // M3 fix: Load settings from database on startup
+  // M8 fix: guard against re-entrant calls. The engine:switched listener also
+  // calls loadSettings; without this guard, loadSettings -> set(settings) ->
+  // engine readiness effect -> switch_engine -> engine:switched -> loadSettings
+  // loops forever (React error #185, "Maximum update depth exceeded").
   loadSettings: async () => {
+    if (get().settingsLoaded) return;
     try {
       const stored = await invoke<Record<string, string>>('get_settings');
       const partial: Partial<AppSettings> = {};

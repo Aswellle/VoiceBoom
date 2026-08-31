@@ -31,19 +31,6 @@
         "fullscreen": false,
         "resizable": true,
         "skipTaskbar": true
-      },
-      {
-        "title": "VoiceBoom 设置",
-        "label": "settings",
-        "width": 860,
-        "height": 640,
-        "minWidth": 720,
-        "minHeight": 520,
-        "decorations": true,
-        "resizable": true,
-        "center": true,
-        "visible": false,
-        "skipTaskbar": false
       }
     ],
     "security": {

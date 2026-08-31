@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "path";
@@ -10,6 +11,13 @@ export default defineConfig(async () => ({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  test: {
+    globals: true,
+    environment: "jsdom",
+    setupFiles: ["./src/test/setup.ts"],
+    css: false,
+    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+  },
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`
   //
   // 1. prevent vite from obscuring rust errors
@@ -20,7 +28,7 @@ export default defineConfig(async () => ({
     port: 1420,
     strictPort: true,
     watch: {
-      // 3. tell vite to ignore watching `src-tauri`
+      // 3. tell vite from obscuring rust errors
       ignored: ["**/src-tauri/**"],
     },
   },

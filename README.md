@@ -1,12 +1,16 @@
 # 🎙️ VoiceBoom AI
 
+[![Tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](./src/test)
+[![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-1.80%2B-EA5800?logo=rust)](https://www.rust-lang.org)
+[![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
+[![License](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
+
 **实时流式智能语音输入法** — Real-time Streaming Voice Input Method
 
 > 像 Apple macOS 原生交互一样简洁优雅，同时具备 AI 时代实时语音输入能力。
 
-## 产品概述
-
-VoiceBoom AI 是一款面向 Windows / macOS 平台的低延迟实时语音转文字输入工具。用户通过快捷键唤醒麦克风后，可以连续自然讲话，系统实时将语音流转换为文字，并以悬浮窗口形式展示最新识别结果。
+一个面向 Windows / macOS 的低延迟实时语音转文字输入工具。按住全局快捷键唤醒麦克风，连续自然讲话，语音流实时转为文字，在毛玻璃悬浮窗中展示最新识别结果。
 
 ## 核心特性
 
@@ -55,7 +59,48 @@ bun run tauri:dev
 bun run tauri:build
 ```
 
+> 构建产物位于 `src-tauri/target/release/bundle/`（msi/nsis 安装包）。
+
+## 测试
+
+项目采用两层测试策略。由于前端强依赖 Tauri API，无法在纯浏览器中渲染，因此**单元/组件测试在 jsdom 中通过 mock Tauri 层运行**，**端到端测试通过 tauri-driver 驱动真实桌面窗口**。
+
+### 单元与组件测试（Vitest）
+
+```bash
+bun run test                # 运行一次
+bun run test:watch          # 监听模式
+bun run test:ui             # Web UI 界面
+bun run coverage            # 覆盖率报告
+```
+
+覆盖内容：
+- `useAppStore` — M8 重入守卫、设置持久化、maxChars 预算裁剪、toast 定时
+- `SegmentItem` — 渲染、无障碍语义（role/aria-label/键盘）、clipboard 复制 + textarea 降级
+- `FloatingWindow` — 控件渲染、录音状态切换、按内容高度自动调窗、滚动"回到最新" FAB
+
+### 端到端测试（tauri-driver）
+
+驱动真实桌面窗口的冒烟测试：
+
+```bash
+bun run tauri:build:test    # 构建单窗口测试变体（仅 floating 窗口）
+bun run test:e2e            # 启动 tauri-driver + msedgedriver，连接真实应用
+```
+
+E2E 覆盖：应用启动、引擎标签、开始/停止按钮、设置按钮。
+
+> **不覆盖**（需真实麦克风 / 系统消息循环 / WebView2）：全局快捷键、实际录音、ASR 转写、桌面拖拽。
+
+### 测试环境安装位置（均避开 C 盘）
+
+| 组件 | 位置 |
+|---|---|
+| tauri-driver | `D:\cargo\bin\tauri-driver.exe`（`CARGO_HOME=D:\cargo`） |
+| msedgedriver | `D:\msedgedriver\msedgedriver.exe`（匹配 Edge 版本） |
+
 ## 项目结构
+
 
 ```
 VoiceBoom/
@@ -70,19 +115,27 @@ VoiceBoom/
 │   ├── hooks/                # 自定义 Hooks
 │   ├── utils/                # 工具函数
 │   ├── styles/               # 全局样式
+│   ├── test/                 # Vitest 测试（setup + store + 组件）
 │   ├── App.tsx
 │   └── main.tsx
 ├── src-tauri/                # Rust 后端源码
-│   ├── audio/                # 音频采集与 VAD
-│   ├── asr/                  # ASR 引擎抽象与适配器
-│   ├── shortcut/             # 全局快捷键
-│   ├── commands/             # Tauri 命令
-│   ├── db/                   # SQLite 数据库
-│   └── src/main.rs
+│   ├── src/
+│   │   ├── audio/            # 音频采集与 VAD
+│   │   ├── asr/              # ASR 引擎抽象与适配器
+│   │   ├── shortcut/         # 全局快捷键
+│   │   ├── commands/         # Tauri 命令
+│   │   ├── db/               # SQLite 数据库
+│   │   └── main.rs
+│   ├── capabilities/         # Tauri 权限配置
+│   ├── asr-bundle/           # 内置 ONNX 模型资源
+│   └── Cargo.toml
+├── scripts/
+│   └── e2e_smoke.mjs         # tauri-driver 端到端冒烟测试
 ├── docs/                     # 设计文档
-├── scripts/                  # 构建脚本
+├── AGENTS.md                 # AI 代理协作指南
+├── README.md
 └── package.json
-```
+ ```
 
 ## 版本规划
 

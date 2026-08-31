@@ -1,10 +1,12 @@
 // FloatingWindow — the main voice recognition display
-// Shows real-time recognition results with glassmorphism styling
-// Features: newest-first layout, text trimming, animations, drag support
+// Shows real-time recognition results with glassmorphism styling.
+// Auto-resizes downward as transcribed text grows, up to a maximum viewport,
+// then scrolls to keep the latest output visible.
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
+import { LogicalSize } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
@@ -12,21 +14,42 @@ import { Waveform } from '../Waveform';
 import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
 import { useAsr } from '../../hooks/useAsr';
 
-/// Animation variants for text segments
+// ---------------------------------------------------------------------------
+// Window-budget constants (mirror tauri.conf.json so JS and Rust agree).
+// ---------------------------------------------------------------------------
+const MIN_W = 320;
+const MIN_H = 100;
+const MAX_W = 900;
+const MAX_H = 500;
+const DEFAULT_W = 600;
+const DEFAULT_H = 140;
+
+// Fallback chrome height (header + diagnostic + paddings). Used until the
+// first layout measurement; after that we measure the live chrome via chromeRef.
+const CHROME_H = 44 + 18 + 12;
+
+// Distance from the bottom (px) under which we treat the user as "at bottom".
+const SCROLL_THRESHOLD = 40;
+
+// ---------------------------------------------------------------------------
+// Animation variants
+// ---------------------------------------------------------------------------
+const containerVariants = {
+  initial: { opacity: 0, scale: 0.85 },
+  animate: { opacity: 1, scale: 1 },
+  exit: { opacity: 0, scale: 0.85 },
+};
+
 const segmentVariants = {
   initial: { opacity: 0, x: 10, scale: 0.95 },
   animate: { opacity: 1, x: 0, scale: 1 },
   exit: { opacity: 0, x: -20, scale: 0.9 },
 };
 
-const containerVariants = {
-  initial: { opacity: 0, scale: 0.8 },
-  animate: { opacity: 1, scale: 1 },
-  exit: { opacity: 0, scale: 0.8 },
-};
-
-/// Single recognition segment display
-function SegmentItem({
+// ---------------------------------------------------------------------------
+// Single recognition segment display
+// ---------------------------------------------------------------------------
+export function SegmentItem({
   segment,
   isNewest,
   reduceMotion,
@@ -38,52 +61,75 @@ function SegmentItem({
   fontSize: number;
 }) {
   const showToast = useAppStore((s) => s.showToast);
-  const handleClick = useCallback(() => {
-    // Copy to clipboard on click — m7 fix: visual feedback
-    navigator.clipboard.writeText(segment.text).then(() => {
-      showToast('已复制');
-    }).catch(() => {
-      // Fallback: use Tauri clipboard or ignore
-    });
+  const handleCopy = useCallback(() => {
+    const text = segment.text;
+    const ok = () => showToast('已复制到剪贴板');
+    const fail = () => showToast('复制失败，请手动选取文字');
+    // Tauri 生产环境走 asset:// 协议，navigator.clipboard 可能不可用，
+    // 此时回退到 textarea + execCommand，保证点击复制始终可用。
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(ok).catch(fail);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        ok();
+      } catch {
+        fail();
+      }
+    }
   }, [segment.text, showToast]);
+
+  // 仅用一句话描述操作结果，避免把长文本读出来。
+  const ariaLabel = `复制识别结果：${segment.text.slice(0, 20)}${segment.text.length > 20 ? '…' : ''}`;
 
   return (
     <motion.div
-      layout
+      role="button"
+      tabIndex={0}
+      aria-label={ariaLabel}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          handleCopy();
+        }
+      }}
       variants={segmentVariants}
       initial={reduceMotion ? false : 'initial'}
       animate="animate"
       exit="exit"
-      transition={{ duration: 0.2, ease: 'easeOut' }}
-      onClick={handleClick}
-      className={`
-        cursor-pointer select-all rounded-lg px-3 py-1.5
-        transition-colors duration-150
-        ${isNewest ? 'opacity-100' : 'opacity-35'}
-        hover:bg-white/10
-      `}
+      transition={{ type: 'spring', stiffness: 400, damping: 25 }}
+      layout={reduceMotion ? false : true}
+      onClick={handleCopy}
+      className={`group relative px-3 py-2 rounded-2xl cursor-pointer transition-colors shrink-0 ${
+        isNewest ? 'bg-blue-500/8 hover:bg-blue-500/15' : 'hover:bg-white/30'
+      }`}
       style={{ fontSize }}
+      title="点击复制到剪贴板"
     >
-      <span className="text-gray-800 dark:text-gray-100 leading-snug">
+      <span className="text-gray-800 dark:text-gray-100 leading-relaxed">
         {segment.text}
       </span>
       {segment.language && (
-        <span className="ml-2 text-[10px] text-gray-400 uppercase">
+        <span className="ml-1.5 text-[10px] text-gray-400 uppercase align-baseline">
           {segment.language === 'zh' ? '中' : segment.language}
         </span>
       )}
+      <span className="absolute -top-1 -right-1 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] bg-gray-700/80 text-white px-1.5 py-0.5 rounded-full pointer-events-none">
+        复制
+      </span>
     </motion.div>
   );
 }
 
-/// Main floating window component
 export function FloatingWindow() {
-  // Single useAsr instance shared by both the global-hotkey path and the manual
-  // start/stop button, so they agree on the isListeningRef guard (prevents the
-  // stuck-recording / swallowed-hotkey desync).
   const { startListening, stopListening } = useAsr();
-  // Sets up global-hotkey push-to-talk; no return value needed (FloatingWindow
-  // drives its listening state from the store).
   useGlobalShortcut(startListening, stopListening);
 
   const status = useAppStore((s) => s.status);
@@ -95,31 +141,113 @@ export function FloatingWindow() {
   const settingsLoaded = useAppStore((s) => s.settingsLoaded);
   const shortcutRegistered = useAppStore((s) => s.shortcutRegistered);
 
-  // Engine readiness check — populated on mount and when engine switches.
-  // For local engines, checks if model files exist; for cloud engines,
-  // reports whether an API key is configured. Used to show "configure first"
-  // hints instead of "press shortcut" when the selected engine can't work.
   const [engineReady, setEngineReady] = useState<boolean | null>(null);
+  const [diag, setDiag] = useState({ shortcutPressed: false, audioFrames: 0 });
+  // canScrollUp drives the "scroll to bottom" FAB — shows when the user has
+  // scrolled up to read older text, letting them quickly return to live output.
+  const [canScrollUp, setCanScrollUp] = useState(false);
 
-  // Check engine status on mount and when settings.engine changes. Skip until
-  // initial settings are loaded so we don't probe the default engine before
-  // loadSettings resolves (would show a transiently wrong readiness hint).
+  // -----------------------------------------------------------------------
+  // Scroll listener: track whether the user has scrolled away from the bottom
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onScroll = () => {
+      setCanScrollUp(el.scrollHeight - el.scrollTop - el.clientHeight >= SCROLL_THRESHOLD);
+    };
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // -----------------------------------------------------------------------
+
+  // contentRef wraps the actual rendered segments so we can measure its
+  // natural (unconstrained) height. scrollRef is the overflow container.
+  // chromeRef wraps the fixed chrome (header + diagnostic) so we can measure
+  // its real height instead of relying on a hardcoded constant.
+  const contentRef = useRef<HTMLDivElement>(null);
+  const chromeRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const lastResizeH = useRef(DEFAULT_H);
+
+  // -----------------------------------------------------------------------
+  // Auto-resize: measure the content's natural height and grow the window
+  // to fit, clamped to [MIN_H, MAX_H]. Anchored at the top so it grows
+  // downward.
+  // -----------------------------------------------------------------------
+  const autoResize = useCallback(() => {
+    const el = contentRef.current;
+    if (!el) return;
+    const naturalTextH = el.scrollHeight;
+    // Measure the live chrome height (header + diagnostic) so the text area
+    // budget stays correct even if font/DPI/wrapping shifts the chrome.
+    const chromeH = chromeRef.current
+      ? chromeRef.current.getBoundingClientRect().height
+      : CHROME_H;
+    const desired = Math.round(chromeH + naturalTextH);
+    const clamped = Math.min(MAX_H, Math.max(MIN_H, desired));
+
+    // Only call setSize when the value actually changed — avoids a Tauri
+    // round-trip (and potential flicker) on every keystroke.
+    if (clamped === lastResizeH.current) return;
+    lastResizeH.current = clamped;
+
+    getCurrentWebviewWindow()
+      .setSize(new LogicalSize(DEFAULT_W, clamped))
+      .catch(() => {});
+  }, []);
+
+  // Measure after every render that could change content height.
+  useLayoutEffect(() => {
+    autoResize();
+  }, [segments, currentPartial, settings.fontSize, autoResize]);
+
+  // -----------------------------------------------------------------------
+  // Auto-scroll to the bottom so the latest partial is always visible once
+  // the window has hit its max height.
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    // If the user is near the bottom (or the window is still growing), keep
+    // them pinned to the latest text. A small tolerance avoids fighting the
+    // user if they scroll up to read older content.
+    //
+    // Use instant scrolling: this fires on every ASR partial update, and
+    // queued smooth-scrolls would otherwise overlap and stutter (jitter) the
+    // view during fast dictation.
+    const atBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < SCROLL_THRESHOLD;
+    if (atBottom || lastResizeH.current < MAX_H) {
+      el.scrollTo({ top: el.scrollHeight, behavior: 'instant' });
+    }
+  }, [segments, currentPartial]);
+
+  // -----------------------------------------------------------------------
+  // Engine readiness check
+  // -----------------------------------------------------------------------
   useEffect(() => {
     if (!settingsLoaded) return;
-    invoke('switch_engine', { engine: settings.engine })
-      .then((result: any) => {
-        // Local engines report model_installed; cloud engines don't.
-        // For local, ready = all models present. For cloud, ready = has key.
-        const isLocal = result.is_local;
-        const ready = isLocal
-          ? (result.model_installed && result.tokens_installed && result.vad_installed)
-          : Boolean(settings.apiKey);
-        setEngineReady(ready);
-      })
+    invoke<{
+      is_local: boolean;
+      model_installed?: boolean;
+      tokens_installed?: boolean;
+      vad_installed?: boolean;
+    }>('switch_engine', { engine: settings.engine })
+      .then((result) => {
+         const isLocal = result.is_local;
+         const ready = isLocal
+           ? Boolean(result.model_installed && result.tokens_installed && result.vad_installed)
+           : Boolean(settings.apiKey);
+         setEngineReady(ready);
+       })
       .catch(() => setEngineReady(false));
   }, [settings.engine, settings.apiKey, settingsLoaded]);
 
+  // -----------------------------------------------------------------------
   // Reload settings when the engine is switched so the label stays current
+  // -----------------------------------------------------------------------
   useEffect(() => {
     const unlisten = listen('engine:switched', () => {
       loadSettings().catch(console.error);
@@ -129,15 +257,9 @@ export function FloatingWindow() {
     };
   }, [loadSettings]);
 
-  // Audio flow diagnostics — heartbeat from the bridge task tells us whether
-  // microphone samples are actually reaching the ASR pipeline. Only holds
-  // genuinely diagnostic data (not duplicated store state).
-  const [diag, setDiag] = useState({
-    shortcutPressed: false,
-    audioFrames: 0,
-  });
-
-  // Listen for shortcut events
+  // -----------------------------------------------------------------------
+  // Shortcut + ASR heartbeat listeners (diagnostic only)
+  // -----------------------------------------------------------------------
   useEffect(() => {
     const unPressed = listen('shortcut:pressed', () => {
       setDiag((d) => ({ ...d, shortcutPressed: true }));
@@ -151,8 +273,6 @@ export function FloatingWindow() {
     };
   }, []);
 
-  // Listen for ASR events — only diagnostic data goes into `diag`; recognition
-  // results flow through the store (currentPartial/segments/toastMessage).
   useEffect(() => {
     const unHeartbeat = listen<{ frames: number }>('asr:heartbeat', (e) => {
       setDiag((d) => ({ ...d, audioFrames: e.payload.frames }));
@@ -162,29 +282,33 @@ export function FloatingWindow() {
     };
   }, []);
 
+  // -----------------------------------------------------------------------
+  // Derived state
+  // -----------------------------------------------------------------------
   const isListening = status === 'listening';
   const hasContent = segments.length > 0 || currentPartial;
 
-  // Status text with engine readiness awareness
   const statusText = isListening
-    ? (diag.audioFrames > 0 ? `正在聆听... (${diag.audioFrames} 帧)` : '正在聆听...')
+    ? '正在聆听…'
     : hasContent
     ? ''
     : engineReady === false
-    ? '⚙️ 请先打开设置配置引擎'
+    ? '请先打开「设置」，配置语音引擎后再开始'
     : engineReady === null
-    ? '检查引擎状态...'
-    : '按住快捷键说话';
+    ? '正在检查语音引擎…'
+    : '按住快捷键开始说话';
 
-  // Engine display label
   const engineLabel: Record<string, string> = {
     openai_whisper: 'Whisper API',
     deepgram: 'Deepgram',
-    whisper_cpp: 'SenseVoice', // Legacy ID, now maps to the same backend
+    whisper_cpp: 'SenseVoice',
     funasr: 'SenseVoice',
   };
   const currentEngineLabel = engineLabel[settings.engine] || settings.engine;
 
+  // -----------------------------------------------------------------------
+  // Render
+  // -----------------------------------------------------------------------
   return (
     <motion.div
       variants={containerVariants}
@@ -193,7 +317,7 @@ export function FloatingWindow() {
       exit="exit"
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       className={`
-        glass w-full h-full flex flex-col
+        glass w-full h-full flex flex-col select-none
         ${isListening ? 'ring-2 ring-red-400/30' : ''}
         ${settings.theme === 'dark' ? 'glass-dark' : ''}
       `}
@@ -205,138 +329,216 @@ export function FloatingWindow() {
             : 'rgba(255, 255, 255, 0.72)',
       }}
     >
-      {/* Header: status indicator + waveform — M13 fix: drag handle for window repositioning */}
+      <div ref={chromeRef}>
+      {/* ---------------------------------------------------------------- */}
+      {/* Header: status + waveform + engine + controls (drag handle)        */}
+      {/* ---------------------------------------------------------------- */}
       <div
-        className="flex items-center gap-3 px-4 pt-3 pb-1 cursor-move"
+        className="flex items-center gap-3 px-4 pt-3 pb-1 cursor-move shrink-0"
         onMouseDown={() => {
           getCurrentWebviewWindow().startDragging().catch(() => {});
         }}
       >
-        {/* Recording indicator */}
+        {/* Recording indicator + waveform */}
         <div className="flex items-center gap-2">
           <div
-            className={`
-              w-2.5 h-2.5 rounded-full
-              ${isListening ? 'bg-red-500 recording-dot' : 'bg-gray-300'}
-            `}
+            className={`w-2.5 h-2.5 rounded-full transition-colors ${
+              isListening ? 'bg-red-500 recording-dot' : 'bg-gray-300'
+            }`}
           />
           {isListening && <Waveform />}
         </div>
 
         {/* Status text */}
         {statusText && (
-          <span className="text-xs text-gray-400 italic flex-1">{statusText}</span>
+          <span className="text-xs text-gray-400 italic truncate flex-1 min-w-0">
+            {statusText}
+          </span>
         )}
 
-        {/* Diagnostic indicator — shows shortcut/audio/ASR state at a glance */}
-        <div className="flex items-center gap-1.5 text-[10px]" title="诊断: 快捷键/音频/识别状态">
-          <span className={`w-1.5 h-1.5 rounded-full ${shortcutRegistered ? 'bg-green-400' : 'bg-red-400'}`} title={shortcutRegistered ? '快捷键已注册' : '快捷键未注册'} />
-          <span className={`w-1.5 h-1.5 rounded-full ${diag.shortcutPressed ? 'bg-red-500 animate-pulse' : 'bg-gray-400'}`} title={diag.shortcutPressed ? '快捷键按下' : '快捷键松开'} />
-          <span className={`w-1.5 h-1.5 rounded-full ${diag.audioFrames > 0 ? 'bg-blue-400' : 'bg-gray-400'}`} title={`音频帧: ${diag.audioFrames}`} />
-          {toastMessage && <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={toastMessage} />}
+        {/* Diagnostic dots */}
+        <div
+          className="flex items-center gap-1.5 text-[10px] shrink-0"
+          title="状态指示：快捷键 / 音频 / 识别"
+        >
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              shortcutRegistered ? 'bg-green-400' : 'bg-red-400'
+            }`}
+            title={shortcutRegistered ? '快捷键已就绪' : '快捷键未就绪'}
+          />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              diag.shortcutPressed ? 'bg-red-500 animate-pulse' : 'bg-gray-400'
+            }`}
+            title={diag.shortcutPressed ? '正在收音…' : '已松开快捷键'}
+          />
+          <span
+            className={`w-1.5 h-1.5 rounded-full ${
+              diag.audioFrames > 0 ? 'bg-blue-400' : 'bg-gray-400'
+            }`}
+            title={
+              diag.audioFrames > 0
+                ? `已收到 ${diag.audioFrames} 帧音频`
+                : '等待音频输入…'
+            }
+          />
+          {toastMessage && (
+            <span className="w-1.5 h-1.5 rounded-full bg-red-600" title={toastMessage} />
+          )}
         </div>
 
-        {/* Current engine indicator */}
-        <span className="text-[10px] px-2 py-0.5 bg-white/30 rounded-full text-gray-500 whitespace-nowrap" title={`当前引擎: ${currentEngineLabel}`}>
+        {/* Engine label */}
+        <span
+          className="text-[10px] px-2 py-0.5 bg-white/30 rounded-full text-gray-500 whitespace-nowrap shrink-0"
+          title={`当前语音识别引擎：${currentEngineLabel}`}
+        >
           {currentEngineLabel}
         </span>
-
-        {/* Manual start button — directly invokes Tauri commands to test the core pipeline */}
         <button
           onMouseDown={(e) => e.stopPropagation()}
-          onClick={() => {
-            if (isListening) {
-              stopListening();
-            } else {
-              startListening();
-            }
-          }}
-          className={`px-2 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer ${
+          onClick={() => (isListening ? stopListening() : startListening())}
+          className={`px-2.5 py-0.5 rounded-full text-[10px] font-medium transition-colors cursor-pointer shrink-0 ${
             isListening
               ? 'bg-red-500 text-white hover:bg-red-600'
               : 'bg-green-500/80 text-white hover:bg-green-600'
           }`}
-          title="点击开始/停止录音"
+          title={isListening ? '点击停止录音' : '点击开始录音'}
         >
           {isListening ? '停止' : '说话'}
         </button>
 
-        {/* Settings button */}
+        {/* Settings */}
         <button
-          onMouseDown={(e) => {
-            // Stop propagation so the parent drag handle doesn't start dragging.
-            // Deliberately no preventDefault(): that suppressed the click event
-            // itself, so the gear stopped opening settings.
-            e.stopPropagation();
-          }}
-          onClick={() => invoke('open_settings').catch((err) => console.error('open_settings failed:', err))}
-          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer"
-          title="设置"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() =>
+            invoke('open_settings').catch((err) =>
+              console.error('open_settings failed:', err),
+            )
+          }
+          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer shrink-0"
+          title="打开设置"
+          aria-label="打开设置"
         >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <circle cx="12" cy="12" r="3"/>
-            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+          <svg
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <circle cx="12" cy="12" r="3" />
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06A1.65 1.65 0 0 0 9 4.68 1.65 1.65 0 0 0 10 3.17V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </button>
       </div>
 
-      {/* Diagnostic text — shows exactly what's happening */}
-      <div className="px-4 pb-1">
-        <div className="text-[10px] text-gray-400 font-mono leading-tight">
+      {/* ---------------------------------------------------------------- */}
+      {/* Diagnostic text                                                    */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="px-4 pb-1 shrink-0">
+        <div className="text-[10px] text-gray-400 font-mono leading-tight truncate">
           {toastMessage ? (
             <span className="text-red-400">❌ {toastMessage}</span>
           ) : currentPartial ? (
             <span className="text-blue-300">{currentPartial}</span>
           ) : diag.shortcutPressed ? (
-            <span className="text-yellow-300">🎤 录音中... ({diag.audioFrames} 帧)</span>
+            <span className="text-yellow-300">
+              🎤 正在录音…
+            </span>
           ) : (
             <span className="text-gray-500">
-              {shortcutRegistered ? '✅ 就绪' : '⏳ 注册快捷键'} | 帧: {diag.audioFrames}
+              {shortcutRegistered
+                ? '✅ 已就绪，按住快捷键即可说话'
+                : '⏳ 正在注册快捷键…'}
             </span>
           )}
         </div>
       </div>
-
-      {/* Recognition results area — horizontal flowing text, wraps to next line */}
-      <div className="flex-1 overflow-hidden px-4 pb-3">
-        <div className="h-full overflow-y-auto">
-          {/* Combine all finalized text into a flowing paragraph, with the latest
-              partial appended at the end. This gives the "边说边出字" experience:
-              text fills the window width horizontally, then wraps to the next line. */}
-          <p
-            className="leading-relaxed break-words"
-            style={{ fontSize: settings.fontSize, color: 'var(--text-primary, #1f2937)' }}
-          >
-            {segments.map((segment) => (
-              <span key={segment.id}>
-                {segment.text}
-                {segment.language && (
-                  <span className="ml-1 text-[10px] text-gray-400 uppercase align-baseline">
-                    {segment.language === 'zh' ? '中' : segment.language}
-                  </span>
-                )}
-              </span>
-            ))}
-            {currentPartial && (
-              <span className="text-gray-400 italic opacity-70">
-                {currentPartial}…
-              </span>
-            )}
-          </p>
-        </div>
       </div>
 
-      {/* m7 fix: Toast notification for copy feedback */}
-      {toastMessage && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0 }}
-          className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-2rem)] px-3 py-1.5 bg-gray-800/90 text-white text-xs rounded-2xl shadow-lg text-center leading-relaxed break-words"
-        >
-          {toastMessage}
-        </motion.div>
-      )}
+      {/* ---------------------------------------------------------------- */}
+      {/* Recognition results — overflow scroll, auto-resizes window to fit */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="flex-1 min-h-0 overflow-hidden px-4 pb-3 relative">
+        {/* Top fade — hints that older content is above */}
+        <div
+          className={`pointer-events-none absolute top-0 left-4 right-4 h-6 z-10 bg-gradient-to-b from-black/10 to-transparent transition-opacity duration-300 ${
+            canScrollUp ? 'opacity-100' : 'opacity-0'
+          }`}
+        />
+        <div ref={scrollRef} className="h-full overflow-y-auto">
+          <div ref={contentRef} className="flex flex-col gap-1">
+            <AnimatePresence initial={false}>
+              {segments.map((segment, idx) => (
+                <SegmentItem
+                  key={segment.id}
+                  segment={segment}
+                  isNewest={idx === segments.length - 1}
+                  reduceMotion={settings.reduceMotion}
+                  fontSize={settings.fontSize}
+                />
+              ))}
+            </AnimatePresence>
+            {currentPartial && (
+              <motion.div
+                key="partial"
+                initial={{ opacity: 0.5 }}
+                animate={{ opacity: 0.7 }}
+                className="px-3 py-2 rounded-2xl bg-gray-400/5 shrink-0"
+              >
+                <span
+                  className="text-gray-400 italic"
+                  style={{ fontSize: settings.fontSize }}
+                >
+                  {currentPartial}…
+                </span>
+              </motion.div>
+            )}
+          </div>
+        </div>
+        {/* Scroll-to-bottom FAB — appears when user has scrolled up */}
+        <AnimatePresence>
+          {canScrollUp && (
+            <motion.button
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.8 }}
+              onClick={() => {
+                scrollRef.current?.scrollTo({
+                  top: scrollRef.current.scrollHeight,
+                  behavior: 'smooth',
+                });
+              }}
+              className="absolute bottom-3 left-1/2 -translate-x-1/2 w-8 h-8 flex items-center justify-center bg-gray-800/80 hover:bg-gray-700/90 text-white rounded-full shadow-lg cursor-pointer z-20"
+              title="返回最新内容"
+              aria-label="返回最新内容"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </motion.button>
+          )}
+        </AnimatePresence>
+      </div>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Toast                                                              */}
+      {/* ---------------------------------------------------------------- */}
+      <AnimatePresence>
+        {toastMessage && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="absolute bottom-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-2rem)] px-3 py-1.5 bg-gray-800/90 text-white text-xs rounded-2xl shadow-lg text-center leading-relaxed break-words"
+          >
+            {toastMessage}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </motion.div>
   );
 }

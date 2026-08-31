@@ -40,3 +40,24 @@ src-tauri/models/
 
 # Claude Code
 .claude/
+
+# Testing artifacts
+coverage/
+test-results/
+playwright-report/
+.playwright/
+*.vitest/
+
+# Env files
+.env
+.env.local
+.env.*.local
+
+# Cargo / tauri-driver E2E (D: drive helpers live outside the repo)
+D:/cargo/
+D:/msedgedriver/
+
+# OS
+Thumbs.db
+ehthumbs.db
+Desktop.ini
