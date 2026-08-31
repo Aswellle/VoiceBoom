@@ -41,6 +41,20 @@ src-tauri/models/
 # Claude Code
 .claude/
 
+# AI agent / proxy files (not part of the project)
+CLAUDE.md
+AGENTS.md
+
+# Project planning & review documents (local-only)
+CODE_REVIEW_FIXES.md
+IMPLEMENTATION_SUMMARY.md
+QUICKSTART.md
+*.md.bak
+
+# PRD documents
+*PRD*.md
+*prd*.md
+
 # Testing artifacts
 coverage/
 test-results/
