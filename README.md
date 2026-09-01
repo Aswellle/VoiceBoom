@@ -94,41 +94,59 @@ E2E 覆盖：应用启动、引擎标签、开始/停止按钮、设置按钮。
 
 ## 项目结构
 
-
 ```
 VoiceBoom/
-├── src/                      # React 前端源码
+├── src/                        # React 19 前端 (TypeScript + Tailwind CSS)
 │   ├── components/
-│   │   ├── FloatingWindow/   # 悬浮窗核心组件
-│   │   ├── Waveform/         # 动态波形
-│   │   ├── Settings/         # 设置面板
-│   │   ├── Shared/           # 通用 UI 组件
-│   │   └── Animation/        # 动画配置
-│   ├── stores/               # Zustand 状态管理
-│   ├── hooks/                # 自定义 Hooks
-│   ├── utils/                # 工具函数
-│   ├── styles/               # 全局样式
-│   ├── test/                 # Vitest 测试（setup + store + 组件）
-│   ├── App.tsx
-│   └── main.tsx
-├── src-tauri/                # Rust 后端源码
+│   │   ├── FloatingWindow/     # 悬浮窗核心组件（自动调高、滚动、复制）
+│   │   ├── Settings/           # 设置面板（7 个标签页）
+│   │   └── Waveform/           # 音频波形可视化
+│   ├── hooks/
+│   │   ├── useAsr.ts           # ASR 录音生命周期
+│   │   └── useGlobalShortcut.ts # 全局快捷键推麦
+│   ├── stores/
+│   │   └── useAppStore.ts      # Zustand 全局状态（设置/识别结果/UI）
+│   ├── test/                   # Vitest 测试套件
+│   │   ├── setup.ts            # Tauri API mock + jsdom 补丁
+│   │   ├── store.test.ts       # store 逻辑测试
+│   │   └── components.test.tsx # 组件渲染与交互测试
+│   ├── utils/                  # 工具函数
+│   ├── styles/                 # 全局样式 + glassmorphism 设计令牌
+│   ├── App.tsx                 # 根路由（按窗口标签分发）
+│   └── main.tsx                # React 19 入口 + ErrorBoundary
+├── src-tauri/                  # Tauri 2.0 Rust 后端
 │   ├── src/
-│   │   ├── audio/            # 音频采集与 VAD
-│   │   ├── asr/              # ASR 引擎抽象与适配器
-│   │   ├── shortcut/         # 全局快捷键
-│   │   ├── commands/         # Tauri 命令
-│   │   ├── db/               # SQLite 数据库
-│   │   └── main.rs
-│   ├── capabilities/         # Tauri 权限配置
-│   ├── asr-bundle/           # 内置 ONNX 模型资源
-│   └── Cargo.toml
+│   │   ├── asr/                # ASR 引擎抽象 + 适配器
+│   │   │   ├── adapters/       # local(SenseVoice) / openai_whisper / deepgram
+│   │   │   ├── engine_trait.rs # StreamingAsrEngine trait
+│   │   │   └── streaming.rs    # AsrManager（引擎复用）
+│   │   ├── audio/              # CPAL 音频采集 + 重采样
+│   │   ├── commands/           # 13 个 Tauri 命令处理器
+│   │   ├── shortcut/           # 全局快捷键（平台默认）
+│   │   ├── db/                 # SQLite（设置/历史/快捷键）
+│   │   ├── resources/          # ONNX 模型路径解析
+│   │   ├── tray/               # 系统托盘
+│   │   ├── lib.rs              # AppState + 命令注册 + 托盘
+│   │   └── main.rs             # 入口（windows_subsystem）
+│   ├── capabilities/           # Tauri 权限配置
+│   ├── gen/schemas/            # 生成的 ACL schema
+│   ├── icons/                  # 应用图标
+│   ├── tools/                  # asr_debug 调试工具
+│   ├── tauri.conf.json         # 窗口定义 + 构建配置
+│   └── tauri.test.conf.json    # 单窗口 E2E 测试配置
 ├── scripts/
-│   └── e2e_smoke.mjs         # tauri-driver 端到端冒烟测试
-├── docs/                     # 设计文档
-├── AGENTS.md                 # AI 代理协作指南
-├── README.md
-└── package.json
- ```
+│   └── e2e_smoke.mjs           # tauri-driver 端到端冒烟测试
+├── docs/
+│   └── DEVELOPMENT.md          # 开发指南
+├── public/                     # 静态资源
+├── index.html                  # Vite 入口 HTML
+├── verify_asr_integration.sh   # ASR 集成验证脚本
+├── package.json                # 依赖 + 脚本
+├── vite.config.ts              # Vite + Vitest 配置
+├── tailwind.config.js          # Tailwind 配置
+├── tsconfig.json               # TypeScript 配置
+└── README.md
+```
 
 ## 版本规划
 
