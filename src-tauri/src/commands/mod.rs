@@ -678,6 +678,21 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
     let _ = window.set_always_on_top(true);
     window.show().map_err(|e| format!("Failed to show settings: {}", e))?;
     window.set_focus().map_err(|e| format!("Failed to focus settings: {}", e))?;
-
     Ok(())
+}
+
+/// Inject transcribed text into the currently focused input field.
+///
+/// `mode` selects the strategy: `"clipboard"` (default, win-text-inject on
+/// Windows) or `"typing"` (enigo keystroke simulation).
+#[tauri::command]
+pub async fn inject_text(text: String, mode: Option<String>) -> Result<(), String> {
+    if text.is_empty() {
+        return Ok(());
+    }
+    let mode = mode
+        .and_then(|m| serde_json::from_str::<crate::inject::InjectionMode>(&format!("\"{m}\"")).ok())
+        .unwrap_or_default();
+    log::info!("inject_text: {} chars, mode={:?}", text.len(), mode);
+    crate::inject::inject(&text, &mode)
 }

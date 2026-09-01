@@ -34,6 +34,8 @@ export interface AppSettings {
   reduceMotion: boolean;
   autoStart: boolean;
   vadSensitivity: number;
+  /// How transcribed text is injected into the focused input field.
+  injectionMode: 'clipboard' | 'typing';
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -52,7 +54,11 @@ const DEFAULT_SETTINGS: AppSettings = {
   reduceMotion: false,
   autoStart: false,
   vadSensitivity: 50,
-};
+  // Clipboard injection via win-text-inject (Windows) is the default — it
+  // delivers text directly to the focused field like WeChat/iOS dictation,
+  // without manual copy-paste.
+  injectionMode: 'clipboard',
+}
 
 /// Application state interface
 interface AppState {
@@ -84,7 +90,7 @@ interface AppState {
   audioLevel: number;
   setAudioLevel: (level: number) => void;
 
-  // Whether initial settings have been loaded from the DB (avoids running the
+  // Whether initial settings have been loaded from the database (avoids running the
   // engine-readiness check against defaults before loadSettings resolves).
   settingsLoaded: boolean;
   // Whether the global shortcut is currently registered (set by App.tsx).
@@ -94,6 +100,10 @@ interface AppState {
   // Toast notification (m7 fix)
   toastMessage: string;
   showToast: (message: string) => void;
+
+  /// Inject a finalized ASR transcript into the currently focused input field.
+  /// Called by useAsr when a final result arrives.
+  injectFinalText: (text: string) => void;
 }
 
 // m5 fix: Monotonic counter for unique IDs (avoids millisecond collision)
@@ -115,6 +125,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   // Recognition results
   segments: [],
   currentPartial: '',
+  toastMessage: '',
   addSegment: (segment) => {
     set((state) => ({
       segments: [...state.segments, segment],
@@ -183,6 +194,7 @@ export const useAppStore = create<AppState>((set, get) => ({
           case 'reduceMotion': partial.reduceMotion = value === 'true'; break;
           case 'autoStart': partial.autoStart = value === 'true'; break;
           case 'vadSensitivity': partial.vadSensitivity = parseInt(value, 10) || 50; break;
+          case 'injectionMode': partial.injectionMode = value === 'typing' ? 'typing' : 'clipboard'; break;
         }
       }
       if (Object.keys(partial).length > 0) {
@@ -210,9 +222,19 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsLoaded: false,
   shortcutRegistered: false,
   setShortcutRegistered: (registered) => set({ shortcutRegistered: registered }),
-
-  // Toast notification (m7 fix)
-  toastMessage: '',
+  injectFinalText: (text) => {
+    const mode = get().settings.injectionMode;
+    // Fire-and-forget: injection runs async; errors surface as toasts.
+    invoke('inject_text', { text, mode })
+      .then(() => {
+        console.info(`injectFinalText: injected ${text.length} chars via '${mode}'`);
+      })
+      .catch((e) => {
+        const msg = typeof e === 'string' ? e : '文本注入失败';
+        console.error('injectFinalText failed:', msg);
+        get().showToast(msg);
+      });
+  },
   showToast: (message) => {
     // Cancel any pending dismissal so a new toast gets its full duration
     // instead of inheriting the previous one's timer.

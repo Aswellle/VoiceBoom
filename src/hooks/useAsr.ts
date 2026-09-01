@@ -40,6 +40,8 @@ export function useAsr(): UseAsrReturn {
           confidence,
           timestamp: Date.now(),
         });
+        // 语音转写完成后，自动注入到当前焦点输入框（如微信/iOS 听写）
+        useAppStore.getState().injectFinalText(text);
       } else {
         updatePartial(text);
       }

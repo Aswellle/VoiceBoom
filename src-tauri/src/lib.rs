@@ -5,6 +5,7 @@ mod audio;
 mod asr;
 mod commands;
 mod db;
+mod inject;
 mod resources;
 mod shortcut;
 mod tray;
@@ -136,9 +137,9 @@ pub fn run() {
             commands::get_audio_devices,
             commands::open_settings,
             commands::get_resource_status,
-            commands::get_resource_endpoint,
             commands::install_model,
             commands::switch_engine,
+            commands::inject_text,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

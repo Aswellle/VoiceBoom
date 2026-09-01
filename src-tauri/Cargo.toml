@@ -35,6 +35,10 @@ http = "1.2"
 num_cpus = "1.16"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
 sherpa-onnx = { version = "1.13", default-features = false, features = ["static"] }
+# Text injection: win-text-inject for clipboard-based delayed-render injection,
+# enigo for direct-typing fallback (cross-platform input simulation).
+win-text-inject = "0.1"
+enigo = "0.3"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
