@@ -71,6 +71,17 @@ playwright-report/
 D:/cargo/
 D:/msedgedriver/
 
+# Vendored crate metadata / build artifacts — keep only src/, Cargo.toml, LICENSE, README
+src-tauri/vendor/**/.cargo-ok
+src-tauri/vendor/**/.cargo_vcs_info.json
+src-tauri/vendor/**/Cargo.lock
+src-tauri/vendor/**/Cargo.toml.orig
+src-tauri/vendor/**/examples/
+src-tauri/vendor/**/tests/
+src-tauri/vendor/**/target/
+src-tauri/vendor/**/rustfmt.toml
+src-tauri/vendor/**/.gitignore
+
 # OS
 Thumbs.db
 ehthumbs.db
