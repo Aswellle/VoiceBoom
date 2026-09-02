@@ -36,10 +36,15 @@ impl AudioCapture {
     /// resamples to TARGET_SAMPLE_RATE in the callback.
     pub fn start_recording(
         &mut self,
+        device_name: Option<&str>,
     ) -> anyhow::Result<tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>> {
         if self.is_recording.load(Ordering::SeqCst) {
             anyhow::bail!("Already recording");
         }
+
+        // Copy the device name into an owned String before moving into the
+        // 'static thread — a borrowed &str would escape the method scope.
+        let device_name = device_name.map(String::from);
 
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<bool>();
         self.cmd_tx = Some(cmd_tx);
@@ -50,13 +55,23 @@ impl AudioCapture {
 
         let is_recording = self.is_recording.clone();
 
-        // m10 fix: Store thread handle for clean shutdown
         self.thread_handle = Some(std::thread::spawn(move || {
             let host = cpal::default_host();
-            let device = match host.default_input_device() {
+            // Pick the requested device by name, or fall back to the default.
+            let device = if let Some(ref name) = device_name {
+                match host.input_devices() {
+                    Ok(mut devs) => devs
+                        .find(|d| d.name().ok().as_deref() == Some(name))
+                        .or_else(|| host.default_input_device()),
+                    Err(_) => host.default_input_device(),
+                }
+            } else {
+                host.default_input_device()
+            };
+            let device = match device {
                 Some(d) => d,
                 None => {
-                    log::error!("No default input device");
+                    log::error!("No input device available");
                     return;
                 }
             };

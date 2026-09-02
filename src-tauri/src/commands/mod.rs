@@ -67,6 +67,8 @@ pub async fn start_recording(
     language: Option<String>,
     apiKey: Option<String>,
     endpoint: Option<String>,
+    device: Option<String>,
+    vadSensitivity: Option<u32>,
 ) -> Result<(), String> {
     log::info!("Starting recording...");
 
@@ -167,6 +169,7 @@ pub async fn start_recording(
             api_key: apiKey.clone(),
             endpoint: resolved_endpoint.clone(),
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
+            vad_sensitivity: vadSensitivity.unwrap_or(50),
             sample_rate: 16000,
         };
         log::info!("Initializing ASR with endpoint={:?}", resolved_endpoint);
@@ -202,7 +205,7 @@ pub async fn start_recording(
     let mut audio_rx = {
         let mut audio_guard = state.audio_capture.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut audio) = *audio_guard {
-            audio.start_recording().map_err(|e| e.to_string())?
+            audio.start_recording(device.as_deref()).map_err(|e| e.to_string())?
         } else {
             return Err("Audio capture not initialized".to_string());
         }
@@ -695,4 +698,55 @@ pub async fn inject_text(text: String, mode: Option<String>) -> Result<(), Strin
         .unwrap_or_default();
     log::info!("inject_text: {} chars, mode={:?}", text.len(), mode);
     crate::inject::inject(&text, &mode)
+}
+
+/// Enable or disable automatic startup at system boot.
+///
+/// Uses the `tauri-plugin-autostart` crate, which handles the platform-specific
+/// mechanisms (Windows registry Run key, macOS LaunchAgent, Linux .desktop file).
+#[tauri::command]
+pub async fn set_auto_start(
+    app_handle: AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app_handle.autolaunch();
+    if enabled {
+        manager.enable().map_err(|e| format!("Failed to enable autostart: {e}"))?;
+        log::info!("Auto-start enabled");
+    } else {
+        manager.disable().map_err(|e| format!("Failed to disable autostart: {e}"))?;
+        log::info!("Auto-start disabled");
+    }
+    Ok(())
+}
+
+/// Check whether automatic startup is currently enabled.
+#[tauri::command]
+pub async fn get_auto_start(app_handle: AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let manager = app_handle.autolaunch();
+    manager.is_enabled().map_err(|e| format!("Failed to query autostart: {e}"))
+}
+
+/// Persist the cloud API key into the dedicated model_config table (with the
+/// encrypted flag set). Keeping it out of the generic settings table avoids
+/// exposing the key alongside plain-text preferences.
+#[tauri::command]
+pub fn save_api_key(
+    state: State<'_, AppState>,
+    apiKey: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = db.as_ref().ok_or("Database not initialized")?;
+    db.save_model_config("apiKey", &apiKey, true)
+        .map_err(|e| e.to_string())
+}
+
+/// Retrieve the cloud API key from the model_config table.
+#[tauri::command]
+pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = db.as_ref().ok_or("Database not initialized")?;
+    db.get_model_config("apiKey").map_err(|e| e.to_string())
 }

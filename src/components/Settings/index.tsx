@@ -1,11 +1,12 @@
 // Settings panel — configuration UI for VoiceBoom
 // Tabs: Voice, AI Model, Shortcuts, Display, Advanced, About
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
+import { open as openUrl } from '@tauri-apps/plugin-shell';
 
 type TabId = 'voice' | 'model' | 'local' | 'shortcuts' | 'display' | 'advanced' | 'about';
 
@@ -221,6 +222,26 @@ function Toggle({
 function VoiceTab() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
+  const showToast = useAppStore((s) => s.showToast);
+  const [devices, setDevices] = useState<Array<{ id: string; label: string }>>([]);
+  const [loadingDevices, setLoadingDevices] = useState(false);
+
+  const refreshDevices = useCallback(() => {
+    setLoadingDevices(true);
+    invoke<Array<[string, string]>>('get_audio_devices')
+      .then((list) => {
+        setDevices(list.map(([id, label]) => ({ id, label })));
+      })
+      .catch(() => {
+        // Non-fatal: the dropdown just won't appear.
+        setDevices([]);
+      })
+      .finally(() => setLoadingDevices(false));
+  }, []);
+
+  useEffect(() => {
+    refreshDevices();
+  }, [refreshDevices]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -236,6 +257,33 @@ function VoiceTab() {
           { value: 'ko', label: '한국어' },
         ]}
       />
+      <div className="flex flex-col gap-1.5">
+        <div className="flex items-center justify-between">
+          <label className="text-sm text-gray-600 font-medium">麦克风</label>
+          <button
+            onClick={refreshDevices}
+            disabled={loadingDevices}
+            className="text-xs text-blue-500 hover:text-blue-600 disabled:opacity-50 cursor-pointer"
+          >
+            {loadingDevices ? '刷新中…' : '刷新'}
+          </button>
+        </div>
+        <select
+          value={settings.selectedDevice}
+          onChange={(e) => updateSettings({ selectedDevice: e.target.value })}
+          className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-gray-200 focus:outline-none focus:border-blue-400 text-gray-700"
+        >
+          <option value="">系统默认</option>
+          {devices.map((d) => (
+            <option key={d.id} value={d.id}>
+              {d.label}
+            </option>
+          ))}
+        </select>
+        {devices.length === 0 && !loadingDevices && (
+          <p className="text-xs text-gray-400">未检测到可用麦克风</p>
+        )}
+      </div>
       <Slider
         label="VAD 灵敏度"
         value={settings.vadSensitivity}
@@ -515,14 +563,14 @@ function DisplayTab() {
 /// Tab content: Advanced settings
 function AdvancedTab() {
   const settings = useAppStore((s) => s.settings);
-  const updateSettings = useAppStore((s) => s.updateSettings);
+  const setAutoStart = useAppStore((s) => s.setAutoStart);
 
   return (
     <div className="flex flex-col gap-4">
       <Toggle
         label="开机自启"
         checked={settings.autoStart}
-        onChange={(v) => updateSettings({ autoStart: v })}
+        onChange={(v) => setAutoStart(v)}
       />
       <div className="text-xs text-gray-400 mt-2 space-y-1">
         <p>数据存储位置: %APPDATA%\com.voiceboom.app\</p>
@@ -534,6 +582,21 @@ function AdvancedTab() {
 
 /// Tab content: About
 function AboutTab() {
+  const [checking, setChecking] = useState(false);
+
+  const checkUpdate = async () => {
+    setChecking(true);
+    try {
+      await openUrl('https://github.com/Aswellle/VoiceBoom');
+    } catch {
+      // Running in browser dev or plugin unavailable — fall back to a plain
+      // window.open so the button still works.
+      window.open('https://github.com/Aswellle/VoiceBoom', '_blank');
+    } finally {
+      setChecking(false);
+    }
+  };
+
   return (
     <div className="flex flex-col items-center gap-4 py-8">
       <div className="text-4xl">🎙️</div>
@@ -543,9 +606,21 @@ function AboutTab() {
         实时流式智能语音输入法 — 像 Apple macOS 原生交互一样优雅，
         同时具备 AI 时代实时语音输入能力。
       </p>
+      <button
+        onClick={checkUpdate}
+        disabled={checking}
+        className="mt-2 px-4 py-1.5 text-xs rounded-full bg-blue-500 text-white hover:bg-blue-600 disabled:opacity-50 cursor-pointer transition-colors"
+      >
+        {checking ? '检查中…' : '检查更新'}
+      </button>
       <div className="text-xs text-gray-400 mt-4 space-y-1 text-center">
         <p>React 19 + Tauri 2.0 + Rust</p>
-        <p>OpenAI Whisper / Deepgram / Whisper.cpp / FunASR</p>
+        <p>OpenAI Whisper / Deepgram / SenseVoice</p>
+        <p className="mt-3">MIT License (Non-Commercial)</p>
+        <p>Copyright © 2026 Aswellle</p>
+        <p className="text-[10px] text-gray-300 mt-2 max-w-[260px] leading-relaxed">
+          本软件仅供非商业用途。商业使用需获得版权方书面授权。
+        </p>
       </div>
     </div>
   );

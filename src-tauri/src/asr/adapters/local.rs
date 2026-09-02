@@ -17,8 +17,7 @@ use super::super::engine_trait::{AsrConfig, AsrResult, StreamingAsrEngine};
 mod cfg {
     /// VAD processes audio in fixed windows (samples at 16kHz).
     pub const VAD_WINDOW_SIZE: usize = 512;
-    /// Energy threshold for speech/silence classification.
-    pub const VAD_THRESHOLD: f32 = 0.5;
+
     /// Silence duration to declare speech end (seconds). The official example
     /// uses 0.1s; we use 0.3s to avoid cutting off normal pauses in dictation.
     pub const VAD_MIN_SILENCE: f32 = 0.3;
@@ -46,7 +45,11 @@ pub struct LocalAsrAdapter {
     /// Timestamp of the last interim decode.
     last_interim: Instant,
     ready: bool,
+    /// VAD sensitivity used to build the current VAD. When the configured
+    /// sensitivity changes, the VAD is recreated on the next initialize().
+    last_vad_sensitivity: Option<u32>,
 }
+
 
 impl LocalAsrAdapter {
     pub fn new() -> Self {
@@ -59,11 +62,18 @@ impl LocalAsrAdapter {
             speech_active: false,
             last_interim: Instant::now(),
             ready: false,
+            last_vad_sensitivity: None,
         }
     }
 
-    /// Lazy-load VAD and recognizer on first initialize.
     fn ensure_models(&mut self, config: &AsrConfig) -> anyhow::Result<()> {
+        // The VAD's threshold is fixed at creation time. If the user changes
+        // sensitivity, drop the old VAD so it gets recreated with the new
+        // threshold on the next initialize().
+        if self.last_vad_sensitivity != Some(config.vad_sensitivity) {
+            self.vad = None;
+        }
+
         if self.vad.is_some() && self.recognizer.is_some() {
             return Ok(());
         }
@@ -93,11 +103,15 @@ impl LocalAsrAdapter {
 
         let (vad_model, onnx_model, tokens) = (parts[0], parts[1], parts[2]);
 
-        // Create Silero VAD
+        // Create Silero VAD. Map sensitivity (0-100) to a threshold in
+        // [0.2, 0.95]: higher sensitivity → lower threshold (easier to
+        // trigger). 50 (default) → 0.5 (Silero's recommended default).
         if self.vad.is_none() {
+            let sensitivity = config.vad_sensitivity.clamp(0, 100) as f32;
+            let threshold = 0.95 - (sensitivity / 100.0) * 0.75;
             let mut vad_config = sherpa_onnx::VadModelConfig::default();
             vad_config.silero_vad.model = Some(vad_model.to_string());
-            vad_config.silero_vad.threshold = cfg::VAD_THRESHOLD;
+            vad_config.silero_vad.threshold = threshold;
             vad_config.silero_vad.min_silence_duration = cfg::VAD_MIN_SILENCE;
             vad_config.silero_vad.min_speech_duration = cfg::VAD_MIN_SPEECH;
             vad_config.silero_vad.max_speech_duration = cfg::VAD_MAX_SPEECH;
@@ -108,7 +122,8 @@ impl LocalAsrAdapter {
                 sherpa_onnx::VoiceActivityDetector::create(&vad_config, 20.0)
                     .ok_or_else(|| anyhow::anyhow!("Failed to create Silero VAD from {}", vad_model))?,
             );
-            log::info!("Loaded Silero VAD from {}", vad_model);
+            self.last_vad_sensitivity = Some(config.vad_sensitivity);
+            log::info!("Loaded Silero VAD from {} (threshold={:.2})", vad_model, threshold);
         }
 
         // Create SenseVoice OfflineRecognizer

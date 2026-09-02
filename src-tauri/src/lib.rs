@@ -124,6 +124,10 @@ pub fn run() {
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_store::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            None,
+        ))
         .manage(AppState::new())
         .invoke_handler(tauri::generate_handler![
             commands::start_recording,
@@ -140,6 +144,10 @@ pub fn run() {
             commands::install_model,
             commands::switch_engine,
             commands::inject_text,
+            commands::set_auto_start,
+            commands::get_auto_start,
+            commands::save_api_key,
+            commands::get_api_key,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

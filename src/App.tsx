@@ -35,14 +35,22 @@ export default function App() {
   const updateSettings = useAppStore((s) => s.updateSettings);
   const setShortcutRegistered = useAppStore((s) => s.setShortcutRegistered);
 
-  // Apply theme to document
+  // Apply theme to document. When set to "auto", follow the OS preference
+  // via prefers-color-scheme and live-update on change.
   useEffect(() => {
     const root = document.documentElement;
-    if (settings.theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
+    const apply = (dark: boolean) => {
+      if (dark) root.classList.add('dark');
+      else root.classList.remove('dark');
+    };
+    if (settings.theme === 'auto') {
+      const mq = window.matchMedia('(prefers-color-scheme: dark)');
+      apply(mq.matches);
+      const handler = (e: MediaQueryListEvent) => apply(e.matches);
+      mq.addEventListener('change', handler);
+      return () => mq.removeEventListener('change', handler);
     }
+    apply(settings.theme === 'dark');
   }, [settings.theme]);
 
   // Load persisted settings on startup (all windows need the real settings)

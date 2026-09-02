@@ -34,10 +34,10 @@ futures = "0.3"
 http = "1.2"
 num_cpus = "1.16"
 zip = { version = "2.2", default-features = false, features = ["deflate"] }
-sherpa-onnx = { version = "1.13", default-features = false, features = ["static"] }
+enigo = { path = "vendor/enigo" }
+tauri-plugin-autostart = "2.5.1"
 # Text injection crates — vendored to avoid external crate references.
 win-text-inject = { path = "vendor/win-text-inject" }
-enigo = { path = "vendor/enigo" }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

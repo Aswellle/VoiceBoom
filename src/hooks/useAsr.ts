@@ -86,6 +86,8 @@ export function useAsr(): UseAsrReturn {
         language: settings.language,
         apiKey: settings.apiKey,
         endpoint: settings.endpoint,
+        device: settings.selectedDevice,
+        vadSensitivity: settings.vadSensitivity,
       });
 
       // Audio level comes from Rust via 'audio:level' events

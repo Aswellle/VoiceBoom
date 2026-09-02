@@ -13,6 +13,7 @@ import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
 import { Waveform } from '../Waveform';
 import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
 import { useAsr } from '../../hooks/useAsr';
+import { HistoryPanel } from '../HistoryPanel';
 
 // ---------------------------------------------------------------------------
 // Window-budget constants (mirror tauri.conf.json so JS and Rust agree).
@@ -244,6 +245,15 @@ export function FloatingWindow() {
        })
       .catch(() => setEngineReady(false));
   }, [settings.engine, settings.apiKey, settingsLoaded]);
+  // -----------------------------------------------------------------------
+  // Restore the persisted window position once settings are loaded.
+  // -----------------------------------------------------------------------
+  useEffect(() => {
+    if (!settingsLoaded) return;
+    // loadSettings already populated windowPosition; now apply it to the window.
+    useAppStore.getState().restoreWindowPosition();
+  }, [settingsLoaded]);
+
 
   // -----------------------------------------------------------------------
   // Reload settings when the engine is switched so the label stays current
@@ -336,7 +346,15 @@ export function FloatingWindow() {
       <div
         className="flex items-center gap-3 px-4 pt-3 pb-1 cursor-move shrink-0"
         onMouseDown={() => {
-          getCurrentWebviewWindow().startDragging().catch(() => {});
+          const win = getCurrentWebviewWindow();
+          // startDragging() resolves when the drag ends — then persist the new
+          // position so the floating window reopens where the user left it.
+          win.startDragging().then(() => {
+            win.position().then((pos) => {
+              useAppStore.getState().setWindowPosition({ x: pos.x, y: pos.y });
+              useAppStore.getState().persistWindowPosition();
+            }).catch(() => {});
+          }).catch(() => {});
         }}
       >
         {/* Recording indicator + waveform */}
@@ -408,7 +426,21 @@ export function FloatingWindow() {
           {isListening ? '停止' : '说话'}
         </button>
 
-        {/* Settings */}
+        {/* History */}
+        <button
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={() => useAppStore.getState().setHistoryOpen(true)}
+          className="w-6 h-6 flex items-center justify-center rounded-full hover:bg-white/20 transition-colors text-gray-400 hover:text-gray-600 cursor-pointer shrink-0"
+          title="识别历史"
+          aria-label="打开识别历史"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 12a9 9 0 1 0 3-6.7L3 8" />
+            <path d="M3 3v5h5" />
+            <path d="M12 7v5l3 2" />
+          </svg>
+        </button>
+
         <button
           onMouseDown={(e) => e.stopPropagation()}
           onClick={() =>
@@ -525,7 +557,10 @@ export function FloatingWindow() {
       </div>
 
       {/* ---------------------------------------------------------------- */}
-      {/* Toast                                                              */}
+      {/* History overlay                                                   */}
+      {/* ---------------------------------------------------------------- */}
+      <HistoryPanel />
+
       {/* ---------------------------------------------------------------- */}
       <AnimatePresence>
         {toastMessage && (

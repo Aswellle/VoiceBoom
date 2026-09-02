@@ -62,17 +62,24 @@ VoiceBoom/
 | 悬浮文字窗口 | ✅ | 毛玻璃 UI，Framer Motion 动画 |
 | 最大展示长度限制 | ✅ | Zustand store 自动裁剪 |
 | 全局快捷键 | ✅ | tauri-plugin-global-shortcut |
-| 设置中心 | ✅ | 6 标签页配置 UI |
-| 数据库 | ✅ | SQLite settings/history 表 |
-| VAD | ✅ | 能量检测语音活动识别 |
-| 多语言 | 🔧 | 前端 UI 已备，需后端适配 |
-| 系统输入注入 | ⏸ | V1.5 功能 |
-| 本地离线引擎 | ⏸ | V1.5 功能 |
+| 设置中心 | ✅ | 7 标签页配置 UI |
+| 数据库 | ✅ | SQLite settings/history/model_config 表 |
+| VAD | ✅ | Silero VAD，灵敏度可调 (0-100) |
+| 多语言 | ✅ | 前端 UI + 后端 SenseVoice 适配 |
+| 系统输入注入 | ✅ | win-text-inject (Windows) + enigo 回退 |
+| 本地离线引擎 | ✅ | sherpa-onnx SenseVoice，模型内置 |
+| 窗口位置持久化 | ✅ | 拖拽后保存到 SQLite，启动恢复 |
+| 历史记录 | ✅ | 查看/搜索/复制/清空 |
+| 麦克风选择 | ✅ | 设备列表 + 自定义选择 |
+| 开机自启 | ✅ | tauri-plugin-autostart 注册 |
+| 主题跟随系统 | ✅ | auto 模式监听 prefers-color-scheme |
+| API Key 安全存储 | ✅ | 移入 model_config 表，独立于普通设置 |
+| 关于页 | ✅ | 版本 + 许可 + 检查更新 |
 
 ## 下一步
 
 1. 连接真实 ASR API（需 API Key）
 2. 实现音频流到 ASR 的实时管道
-3. 添加系统托盘图标和菜单
-4. 实现系统输入注入（SendInput / CGEventPost）
-5. 添加本地离线引擎支持（Whisper.cpp）
+3. ~~添加系统托盘图标和菜单~~ ✅
+4. ~~实现系统输入注入~~ ✅
+5. ~~添加本地离线引擎支持~~ ✅

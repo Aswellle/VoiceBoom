@@ -25,8 +25,9 @@ pub struct AsrConfig {
     pub api_key: Option<String>,
     /// API endpoint URL
     pub endpoint: Option<String>,
-    /// Language setting ("auto" for auto-detect)
     pub language: String,
+    /// VAD sensitivity (0-100). Higher = more sensitive to speech onset.
+    pub vad_sensitivity: u32,
     /// Sample rate of input audio
     pub sample_rate: u32,
 }
