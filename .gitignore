@@ -49,11 +49,9 @@ AGENTS.md
 CODE_REVIEW_FIXES.md
 IMPLEMENTATION_SUMMARY.md
 QUICKSTART.md
+RESEARCH_TEXT_INJECTION.md
 *.md.bak
 
-# PRD documents
-*PRD*.md
-*prd*.md
 
 # Testing artifacts
 coverage/
