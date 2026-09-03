@@ -215,6 +215,22 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 - **No test suite existed before this work.** No linter or formatter is configured.
 - **File-based logging:** `lib.rs::init_file_logger` writes to `%TEMP%\voiceboom_debug.log` — the primary debugging channel for the release GUI app (stderr is invisible).
 - **Plugin version matching:** When adding a Tauri plugin, the npm package and Rust crate must match on major.minor, and you must add the permission in `src-tauri/capabilities/default.json`.
+## Commit Message Discipline (mandatory)
+
+**禁止在提交消息中出现任何 AI 联合作者署名。** 每次提交前、提交后、推送前，必须主动检查并清除以下形式的 trailer：
+
+- `Co-Authored-By:` （含模型名、邮箱等任何变体）
+- `Generated-by:` / `AI-generated:` 等模型/工具署名行
+
+**执行流程（每次提交必须执行）：**
+
+1. 构造提交消息时，不写入任何署名 trailer。
+2. 提交前用 `git log -1 --format='%B'`（或暂存前用草稿文件 `grep -i`）检查，确认不存在上述 trailer。
+3. 若发现已写入，立即用 `git commit --amend` 或重写消息文件移除，再提交。
+4. 推送前再次核对 `git log origin/main..HEAD --format='%B---'` 中是否含署名；若有，一律修正后再推。
+
+本规则为不可跳过的强约束，与代码风格、测试等规则同级。提交消息只承载意图、约束、验证等决策记录，不附加任何作者身份标记。
+
 
 ---
 
