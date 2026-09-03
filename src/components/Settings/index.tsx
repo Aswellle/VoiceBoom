@@ -268,18 +268,15 @@ function VoiceTab() {
             {loadingDevices ? '刷新中…' : '刷新'}
           </button>
         </div>
-        <select
+        <Select
+          label=""
           value={settings.selectedDevice}
-          onChange={(e) => updateSettings({ selectedDevice: e.target.value })}
-          className="w-full px-3 py-2 text-sm rounded-lg bg-white border border-gray-200 focus:outline-none focus:border-blue-400 text-gray-700"
-        >
-          <option value="">系统默认</option>
-          {devices.map((d) => (
-            <option key={d.id} value={d.id}>
-              {d.label}
-            </option>
-          ))}
-        </select>
+          onChange={(v) => updateSettings({ selectedDevice: v })}
+          options={[
+            { value: '', label: '系统默认' },
+            ...devices.map((d) => ({ value: d.id, label: d.label })),
+          ]}
+        />
         {devices.length === 0 && !loadingDevices && (
           <p className="text-xs text-gray-400">未检测到可用麦克风</p>
         )}

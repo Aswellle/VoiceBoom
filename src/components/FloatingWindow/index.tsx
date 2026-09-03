@@ -3,17 +3,18 @@
 // Auto-resizes downward as transcribed text grows, up to a maximum viewport,
 // then scrolls to keep the latest output visible.
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { getCurrentWebviewWindow } from '@tauri-apps/api/webviewWindow';
 import { LogicalSize } from '@tauri-apps/api/window';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
-import { Waveform } from '../Waveform';
-import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
 import { useAsr } from '../../hooks/useAsr';
 import { HistoryPanel } from '../HistoryPanel';
+import { useAppStore, RecognitionSegment } from '../../stores/useAppStore';
+import { copyToClipboard } from '../../utils/clipboard';
+import { Waveform } from '../Waveform';
+import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
 
 // ---------------------------------------------------------------------------
 // Window-budget constants (mirror tauri.conf.json so JS and Rust agree).
@@ -62,29 +63,9 @@ export function SegmentItem({
   fontSize: number;
 }) {
   const showToast = useAppStore((s) => s.showToast);
-  const handleCopy = useCallback(() => {
-    const text = segment.text;
-    const ok = () => showToast('已复制到剪贴板');
-    const fail = () => showToast('复制失败，请手动选取文字');
-    // Tauri 生产环境走 asset:// 协议，navigator.clipboard 可能不可用，
-    // 此时回退到 textarea + execCommand，保证点击复制始终可用。
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(ok).catch(fail);
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        ok();
-      } catch {
-        fail();
-      }
-    }
+  const handleCopy = useCallback(async () => {
+    const ok = await copyToClipboard(segment.text);
+    showToast(ok ? '已复制到剪贴板' : '复制失败，请手动选取文字');
   }, [segment.text, showToast]);
 
   // 仅用一句话描述操作结果，避免把长文本读出来。
@@ -316,6 +297,12 @@ export function FloatingWindow() {
   };
   const currentEngineLabel = engineLabel[settings.engine] || settings.engine;
 
+  // #3 fix: derive the effective dark state. In "auto" mode, follow the OS
+  // preference so the glass-dark class and background color stay in sync.
+  const isDark = useMemo(() => {
+    if (settings.theme !== 'auto') return settings.theme === 'dark';
+    return window.matchMedia('(prefers-color-scheme: dark)').matches;
+  }, [settings.theme]);
   // -----------------------------------------------------------------------
   // Render
   // -----------------------------------------------------------------------
@@ -329,14 +316,11 @@ export function FloatingWindow() {
       className={`
         glass w-full h-full flex flex-col select-none
         ${isListening ? 'ring-2 ring-red-400/30' : ''}
-        ${settings.theme === 'dark' ? 'glass-dark' : ''}
+        ${isDark ? 'glass-dark' : ''}
       `}
       style={{
         opacity: settings.opacity,
-        background:
-          settings.theme === 'dark'
-            ? 'rgba(0, 0, 0, 0.65)'
-            : 'rgba(255, 255, 255, 0.72)',
+        background: isDark ? 'rgba(0, 0, 0, 0.65)' : 'rgba(255, 255, 255, 0.72)',
       }}
     >
       <div ref={chromeRef}>

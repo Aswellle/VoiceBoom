@@ -22,7 +22,13 @@ interface UseAsrReturn {
 }
 
 export function useAsr(): UseAsrReturn {
-  const { setStatus, addSegment, updatePartial, settings } = useAppStore();
+  const { setStatus, addSegment, updatePartial } = useAppStore();
+  const engine = useAppStore((s) => s.settings.engine);
+  const language = useAppStore((s) => s.settings.language);
+  const apiKey = useAppStore((s) => s.settings.apiKey);
+  const endpoint = useAppStore((s) => s.settings.endpoint);
+  const selectedDevice = useAppStore((s) => s.settings.selectedDevice);
+  const vadSensitivity = useAppStore((s) => s.settings.vadSensitivity);
   const isListeningRef = useRef(false);
   const [isListening, setIsListening] = useState(false);
   const audioLevelInterval = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -82,12 +88,12 @@ export function useAsr(): UseAsrReturn {
     try {
       // Invoke Tauri command to start recording with ASR config
       await invoke('start_recording', {
-        engine: settings.engine,
-        language: settings.language,
-        apiKey: settings.apiKey,
-        endpoint: settings.endpoint,
-        device: settings.selectedDevice,
-        vadSensitivity: settings.vadSensitivity,
+        engine,
+        language,
+        apiKey,
+        endpoint,
+        device: selectedDevice,
+        vadSensitivity,
       });
 
       // Audio level comes from Rust via 'audio:level' events
@@ -101,7 +107,7 @@ export function useAsr(): UseAsrReturn {
         typeof error === 'string' ? error : '启动语音识别失败，请检查设置'
       );
     }
-  }, [setStatus, settings]);
+  }, [setStatus, engine, language, apiKey, endpoint, selectedDevice, vadSensitivity]);
 
   // Stop listening
   const stopListening = useCallback(async () => {

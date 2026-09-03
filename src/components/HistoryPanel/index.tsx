@@ -5,6 +5,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAppStore, HistoryRecord } from '../../stores/useAppStore';
+import { copyToClipboard } from '../../utils/clipboard';
 
 /// Format a millisecond epoch into a local HH:MM:SS label.
 function formatTime(ms: number): string {
@@ -78,53 +79,25 @@ export function HistoryPanel() {
   };
 
   const copyRecord = async (rec: HistoryRecord) => {
-    const ok = () => showToast('已复制到剪贴板');
-    const fail = () => showToast('复制失败，请手动选取文字');
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(rec.text);
-        ok();
-      } catch {
-        fail();
-      }
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = rec.text;
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        ok();
-      } catch {
-        fail();
-      }
-    }
+    const ok = await copyToClipboard(rec.text);
+    showToast(ok ? '已复制到剪贴板' : '复制失败，请手动选取文字');
   };
 
   const copySelected = async () => {
     const texts = filtered.filter((r) => selected.has(r.id)).map((r) => r.text);
     if (texts.length === 0) return;
     const joined = texts.join('\n');
-    const ok = () => showToast(`已复制 ${texts.length} 条记录`);
-    const fail = () => showToast('复制失败');
-    if (navigator.clipboard?.writeText) {
-      try {
-        await navigator.clipboard.writeText(joined);
-        ok();
-      } catch {
-        fail();
-      }
-    } else {
-      fail();
-    }
+    const ok = await copyToClipboard(joined);
+    showToast(ok ? `已复制 ${texts.length} 条记录` : '复制失败');
   };
+
 
   const handleClear = async () => {
     if (!confirmClear) {
       setConfirmClear(true);
+      // Auto-reset the confirm state after 3s so the button doesn't stay
+      // stuck on "确认清空?" if the user changes their mind.
+      setTimeout(() => setConfirmClear(false), 3000);
       return;
     }
     await clearHistory();
@@ -168,11 +141,13 @@ export function HistoryPanel() {
           {/* Search + actions */}
           <div className="flex items-center gap-2 px-4 pb-2 shrink-0">
             <input
+              id="history-search"
               ref={searchRef}
               type="text"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="搜索识别文本…"
+              aria-label="搜索识别文本"
               className="flex-1 min-w-0 px-3 py-1.5 text-xs rounded-lg bg-white/70 border border-gray-200 focus:outline-none focus:border-blue-400 text-gray-700 placeholder-gray-400"
             />
             {selected.size > 0 && (
@@ -253,11 +228,20 @@ function HistoryRow({
 }) {
   return (
     <div
+      role="button"
+      tabIndex={0}
+      aria-pressed={selected}
+      aria-label={`识别结果：${record.text.slice(0, 30)}${record.text.length > 30 ? '…' : ''}`}
       className={`group flex items-start gap-2 p-2 rounded-lg cursor-pointer transition-colors ${
         selected ? 'bg-blue-500/15' : 'bg-white/60 hover:bg-white/90'
       }`}
       onClick={onToggle}
-      title="点击选择，双击复制"
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onToggle();
+        }
+      }}
       onDoubleClick={(e) => {
         e.stopPropagation();
         onCopy();
