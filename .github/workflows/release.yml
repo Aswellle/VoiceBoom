@@ -41,18 +41,39 @@ jobs:
           tagName: v__VERSION__
           releaseName: 'VoiceBoom v__VERSION__'
           releaseBody: |
-            🎤 VoiceBoom AI 首个发行版
+            # 🎤 VoiceBoom AI — 实时流式语音输入法
 
-            ## 下载
+            ## ✨ 亮点
 
-            - **Windows 安装包 (`.msi`)** — 推荐
-            - **Windows 安装程序 (`.exe`)** — NSIS 安装器
+            - **全局即说即录** — 自定义全局热键（默认 Ctrl+Alt+Space），按下说话、松开识别，任何输入框即刻出字
+            - **毫秒级流式 ASR** — 采用 sherpa-onnx SenseVoice 离线模型，实时流式返回识别结果，所见即所得
+            - **智能文本注入** — 自动将转录文字注入当前焦点输入框（微信/浏览器/编辑器全适配），支持剪贴板与模拟输入双模式
+            - **玻璃态悬浮窗** — 极简毛玻璃 UI，实时波形可视化，专注不打扰
+            - **完全离线、开箱即用** — 内置 ~240MB SenseVoice 中文模型，零配置、零 API Key、零网络依赖
+            - **多引擎可切换** — 支持本地 SenseVoice / 云端 OpenAI Whisper / Deepgram，按需切换
+            - **跨平台** — Windows / macOS 原生适配（macOS 构建目标后续推出）
 
-            ## 新功能
+            ## 📥 下载
 
-            全局快捷键 → 麦克风采集 → 流式 ASR → 玻璃态悬浮窗 → 直接注入焦点输入框。
-            内置离线 SenseVoice 模型，开箱即用，无需 API Key。
+            | 文件 | 说明 |
+            |------|------|
+            | `VoiceBoom_x64_en-US.msi` | Windows 安装包（推荐） |
+            | `VoiceBoom_x64-setup.exe` | Windows NSIS 安装程序 |
+
+            ## 🚀 快速开始
+
+            1. 安装并启动 VoiceBoom
+            2. 首次启动自动加载本地 SenseVoice 模型（状态栏显示就绪）
+            3. 在任意输入框按下全局热键说话
+            4. 松开热键，文字自动注入当前焦点输入框
+
+            ## ⚙️ 系统要求
+
+            - Windows 10/11 64位
+            - 麦克风输入设备
+
+            ---
+
+            > 构建时间：${{ github.run_id }} | 提交：${{ github.sha }}
           releaseDraft: true
           prerelease: false
-          includeDebugSymbols: false
-          bun: true

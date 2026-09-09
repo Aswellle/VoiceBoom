@@ -5,12 +5,12 @@
     "": {
       "name": "voiceboom",
       "dependencies": {
-        "@tauri-apps/api": "^2.5.0",
-        "@tauri-apps/plugin-dialog": "^2.2.0",
-        "@tauri-apps/plugin-fs": "^2.2.0",
-        "@tauri-apps/plugin-global-shortcut": "^2.2.0",
-        "@tauri-apps/plugin-shell": "^2.2.0",
-        "@tauri-apps/plugin-store": "^2.2.0",
+        "@tauri-apps/api": "2.2.0",
+        "@tauri-apps/plugin-dialog": "2.2.0",
+        "@tauri-apps/plugin-fs": "2.2.0",
+        "@tauri-apps/plugin-global-shortcut": "2.2.0",
+        "@tauri-apps/plugin-shell": "2.2.0",
+        "@tauri-apps/plugin-store": "2.2.0",
         "framer-motion": "^11.18.0",
         "react": "^19.0.0",
         "react-dom": "^19.0.0",
@@ -227,7 +227,7 @@
 
     "@standard-schema/spec": ["@standard-schema/spec@1.1.0", "https://registry.npmmirror.com/@standard-schema/spec/-/spec-1.1.0.tgz", {}, "sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w=="],
 
-    "@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
+    "@tauri-apps/api": ["@tauri-apps/api@2.2.0", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.2.0.tgz", {}, "sha512-R8epOeZl1eJEl603aUMIGb4RXlhPjpgxbGVEaqY+0G5JG9vzV/clNlzTeqc+NLYXVqXcn8mb4c5b9pJIUDEyAg=="],
 
     "@tauri-apps/cli": ["@tauri-apps/cli@2.11.4", "https://registry.npmmirror.com/@tauri-apps/cli/-/cli-2.11.4.tgz", { "optionalDependencies": { "@tauri-apps/cli-darwin-arm64": "2.11.4", "@tauri-apps/cli-darwin-x64": "2.11.4", "@tauri-apps/cli-linux-arm-gnueabihf": "2.11.4", "@tauri-apps/cli-linux-arm64-gnu": "2.11.4", "@tauri-apps/cli-linux-arm64-musl": "2.11.4", "@tauri-apps/cli-linux-riscv64-gnu": "2.11.4", "@tauri-apps/cli-linux-x64-gnu": "2.11.4", "@tauri-apps/cli-linux-x64-musl": "2.11.4", "@tauri-apps/cli-win32-arm64-msvc": "2.11.4", "@tauri-apps/cli-win32-ia32-msvc": "2.11.4", "@tauri-apps/cli-win32-x64-msvc": "2.11.4" }, "bin": { "tauri": "tauri.js" } }, "sha512-R8xGtMpwyetawSqm9kYOuMmEqkhUbvcUy8n0aNXIxollKBLESUu5f4Fx+64hgASYm1H+jSWq6jCW6zqTnH6hqQ=="],
 
@@ -253,15 +253,15 @@
 
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.11.4", "https://registry.npmmirror.com/@tauri-apps/cli-win32-x64-msvc/-/cli-win32-x64-msvc-2.11.4.tgz", { "os": "win32", "cpu": "x64" }, "sha512-+vDiqBIU5dMISg/wNvX3sF+ZHfgJGJ5T0AcO+EHNXV9GGAG+P5fzodlDXD3QdKCRgZxMoCm5PPvj3BqLNjBthw=="],
 
-    "@tauri-apps/plugin-dialog": ["@tauri-apps/plugin-dialog@2.7.2", "https://registry.npmmirror.com/@tauri-apps/plugin-dialog/-/plugin-dialog-2.7.2.tgz", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-pX0IGm1I3I6wc+zeKYcq1GSqogK6okCNX5fOdaNU5ab1AjGS6l1E5wFNjEb7meg7ZFSp0JUs+0jQGQNyOvLrsg=="],
+    "@tauri-apps/plugin-dialog": ["@tauri-apps/plugin-dialog@2.2.0", "https://registry.npmmirror.com/@tauri-apps/plugin-dialog/-/plugin-dialog-2.2.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-6bLkYK68zyK31418AK5fNccCdVuRnNpbxquCl8IqgFByOgWFivbiIlvb79wpSXi0O+8k8RCSsIpOquebusRVSg=="],
 
-    "@tauri-apps/plugin-fs": ["@tauri-apps/plugin-fs@2.5.1", "https://registry.npmmirror.com/@tauri-apps/plugin-fs/-/plugin-fs-2.5.1.tgz", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-9Lz+Jopp6QyeEWhlpkMx4R/+P9HgR+AVAI4vOZhlT8Xaymtz8iVI/Ov984/XTqgJz/5gz5NretqPB/XEMS3NhQ=="],
+    "@tauri-apps/plugin-fs": ["@tauri-apps/plugin-fs@2.2.0", "https://registry.npmmirror.com/@tauri-apps/plugin-fs/-/plugin-fs-2.2.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-+08mApuONKI8/sCNEZ6AR8vf5vI9DXD4YfrQ9NQmhRxYKMLVhRW164vdW5BSLmMpuevftpQ2FVoL9EFkfG9Z+g=="],
 
-    "@tauri-apps/plugin-global-shortcut": ["@tauri-apps/plugin-global-shortcut@2.3.2", "https://registry.npmmirror.com/@tauri-apps/plugin-global-shortcut/-/plugin-global-shortcut-2.3.2.tgz", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-UReHNXrLvpEjylE4jb4oCYiy96uRykPUthoCQCmRXYrd5hs5X9DrW+qOn7GLW57EJN4tdK8bgK5twBTz2NOxzA=="],
+    "@tauri-apps/plugin-global-shortcut": ["@tauri-apps/plugin-global-shortcut@2.2.0", "https://registry.npmmirror.com/@tauri-apps/plugin-global-shortcut/-/plugin-global-shortcut-2.2.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-clI9Bg/BcxWXNDK+ij601o1qC2WxMEy8ovhGgEW5Ai17oPy0KK8uwzmc59KiVnOYKpBWHCUPqBxG+KBNUFXgzw=="],
 
-    "@tauri-apps/plugin-shell": ["@tauri-apps/plugin-shell@2.3.5", "https://registry.npmmirror.com/@tauri-apps/plugin-shell/-/plugin-shell-2.3.5.tgz", { "dependencies": { "@tauri-apps/api": "^2.10.1" } }, "sha512-jewtULhiQ7lI7+owCKAjc8tYLJr92U16bPOeAa472LHJdgaibLP83NcfAF2e+wkEcA53FxKQAZ7byDzs2eeizg=="],
+    "@tauri-apps/plugin-shell": ["@tauri-apps/plugin-shell@2.2.0", "https://registry.npmmirror.com/@tauri-apps/plugin-shell/-/plugin-shell-2.2.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-iC3Ic1hLmasoboG7BO+7p+AriSoqAwKrIk+Hpk+S/bjTQdXqbl2GbdclghI4gM32X0bls7xHzIFqhRdrlvJeaA=="],
 
-    "@tauri-apps/plugin-store": ["@tauri-apps/plugin-store@2.4.4", "https://registry.npmmirror.com/@tauri-apps/plugin-store/-/plugin-store-2.4.4.tgz", { "dependencies": { "@tauri-apps/api": "^2.11.0" } }, "sha512-oxSMaj/QpVfJcBMYX5aOQV94fWvga0MwQMfD6TLlbK2dh+ShPWAzefd8HWXhvOKjPRJdGVAkW7ZGO76JzzjaDA=="],
+    "@tauri-apps/plugin-store": ["@tauri-apps/plugin-store@2.2.0", "https://registry.npmmirror.com/@tauri-apps/plugin-store/-/plugin-store-2.2.0.tgz", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-hJTRtuJis4w5fW1dkcgftsYxKXK0+DbAqurZ3CURHG5WkAyyZgbxpeYctw12bbzF9ZbZREXZklPq8mocCC3Sgg=="],
 
     "@testing-library/dom": ["@testing-library/dom@10.4.1", "https://registry.npmmirror.com/@testing-library/dom/-/dom-10.4.1.tgz", { "dependencies": { "@babel/code-frame": "^7.10.4", "@babel/runtime": "^7.12.5", "@types/aria-query": "^5.0.1", "aria-query": "5.3.0", "dom-accessibility-api": "^0.5.9", "lz-string": "^1.5.0", "picocolors": "1.1.1", "pretty-format": "^27.0.2" } }, "sha512-o4PXJQidqJl82ckFaXUeoAW+XysPLauYI43Abki5hABd853iMhitooc6znOnczgbTYmEP6U6/y1ZyKAIsvMKGg=="],
 
@@ -640,6 +640,16 @@
     "zustand": ["zustand@5.0.14", "https://registry.npmmirror.com/zustand/-/zustand-5.0.14.tgz", { "peerDependencies": { "@types/react": ">=18.0.0", "immer": ">=9.0.6", "react": ">=18.0.0", "use-sync-external-store": ">=1.2.0" }, "optionalPeers": ["@types/react", "immer", "react", "use-sync-external-store"] }, "sha512-/8tAspM5LMPr28b3fwLYrtdj77ECpfZviaP75CMTnwO8ISyaE4GDIG/9rDDYq/cH9D2Xw2A2RXglLInmVBQB/g=="],
 
     "@babel/helper-compilation-targets/lru-cache": ["lru-cache@5.1.1", "https://registry.npmmirror.com/lru-cache/-/lru-cache-5.1.1.tgz", { "dependencies": { "yallist": "^3.0.2" } }, "sha512-KpNARQA3Iwv+jTA0utUVVbrh+Jlrr1Fv0e56GGzAFOXN7dk/FviaDW8LHmK52DlcH4WP2n6gI8vN1aesBFgo9w=="],
+
+    "@tauri-apps/plugin-dialog/@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
+
+    "@tauri-apps/plugin-fs/@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
+
+    "@tauri-apps/plugin-global-shortcut/@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
+
+    "@tauri-apps/plugin-shell/@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
+
+    "@tauri-apps/plugin-store/@tauri-apps/api": ["@tauri-apps/api@2.11.1", "https://registry.npmmirror.com/@tauri-apps/api/-/api-2.11.1.tgz", {}, "sha512-M2FPuYND2m+wh5hfW9ZpSdxMPdEJovPBWwoHJmwUpysTYNHaOkVFN419m/K0LIgjb/7KU2vBgsUepJWugQCvAA=="],
 
     "@testing-library/dom/aria-query": ["aria-query@5.3.0", "https://registry.npmmirror.com/aria-query/-/aria-query-5.3.0.tgz", { "dependencies": { "dequal": "^2.0.3" } }, "sha512-b0P0sZPKtyu8HkeRAfCq0IfURZK+SuwMjY1UXGBU27wpAiTwQAIlq56IbIO+ytk/JjS1fMR14ee5WBBfKi5J6A=="],
 
