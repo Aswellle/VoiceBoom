@@ -1,3 +1,4 @@
+<a id="top"></a>
 # 🎙️ VoiceBoom AI
 
 [![Tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](./src/test)
@@ -206,3 +207,7 @@ MIT License with Commercial Use Restriction — 详见 [LICENSE](./LICENSE)。
 ---
 
 *Built with ❤️ using Tauri, React, and Rust.*
+
+---
+
+**[⬆ 返回顶部](#top)**
