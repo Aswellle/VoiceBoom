@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+
+      - name: Setup Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: bun install
+
+      - name: Build the app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: v__VERSION__
+          releaseName: 'VoiceBoom v__VERSION__'
+          releaseBody: |
+            🎤 VoiceBoom AI 首个发行版
+
+            ## 下载
+
+            - **Windows 安装包 (`.msi`)** — 推荐
+            - **Windows 安装程序 (`.exe`)** — NSIS 安装器
+
+            ## 新功能
+
+            全局快捷键 → 麦克风采集 → 流式 ASR → 玻璃态悬浮窗 → 直接注入焦点输入框。
+            内置离线 SenseVoice 模型，开箱即用，无需 API Key。
+          releaseDraft: true
+          prerelease: false
+          includeDebugSymbols: false
+          bun: true
