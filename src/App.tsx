@@ -1,7 +1,7 @@
 // VoiceBoom AI — Main application component
 // Renders the floating window and manages window routing
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { FloatingWindow } from './components/FloatingWindow';
 import { SettingsPanel } from './components/Settings';
@@ -35,6 +35,8 @@ export default function App() {
   const updateSettings = useAppStore((s) => s.updateSettings);
   const setShortcutRegistered = useAppStore((s) => s.setShortcutRegistered);
 
+  // P1: Inline banner for shortcut errors — replaces alert()
+  const [shortcutError, setShortcutError] = useState<string | null>(null);
   // Apply theme to document. When set to "auto", follow the OS preference
   // via prefers-color-scheme and live-update on change.
   useEffect(() => {
@@ -66,12 +68,13 @@ export default function App() {
     invoke('register_shortcut', { shortcut: settings.shortcut })
       .then(() => {
         setShortcutRegistered(true);
+        setShortcutError(null);
         console.log('[App] Shortcut registered:', settings.shortcut);
       })
       .catch((e) => {
         setShortcutRegistered(false);
-        // Use alert for visibility in GUI app
-        alert(`快捷键注册失败: ${e}\n请尝试使用其他快捷键组合`);
+        // P1: Use inline banner instead of alert() for better UX
+        setShortcutError(`快捷键注册失败: ${e}。请尝试使用其他快捷键组合。`);
         console.error('[App] Failed to register shortcut:', e);
       });
   }, []); // Only run once on mount
@@ -82,11 +85,13 @@ export default function App() {
     invoke('register_shortcut', { shortcut: settings.shortcut })
       .then(() => {
         setShortcutRegistered(true);
+        setShortcutError(null); // Clear error on success
         console.log('[App] Shortcut re-registered:', settings.shortcut);
       })
       .catch((e) => {
         setShortcutRegistered(false);
-        alert(`快捷键更新失败: ${e}`);
+        // P1: Use inline banner instead of alert() for better UX
+        setShortcutError(`快捷键更新失败: ${e}`);
         console.error('[App] Failed to update shortcut:', e);
       });
   }, [settings.shortcut, isSettingsWindow]);
@@ -131,12 +136,39 @@ export default function App() {
       </div>
     );
   }
-
   return (
-    <div className="w-full h-full flex items-center justify-center p-4 bg-transparent">
+    <div className="w-full h-full flex items-center justify-center p-4 bg-transparent relative">
       <div className="w-full h-full max-w-[900px]">
         <FloatingWindow />
       </div>
+      {/* P1: Inline banner for shortcut errors */}
+      {shortcutError && (
+        <div
+          className="absolute top-4 left-1/2 -translate-x-1/2 max-w-md px-4 py-2 rounded-lg shadow-lg flex items-center gap-2"
+          style={{ background: 'var(--surface-base)', border: '1px solid var(--border-subtle)' }}
+        >
+          <span className="text-sm" style={{ color: 'var(--text-primary)' }}>
+            ⚠️ {shortcutError}
+          </span>
+          <button
+            onClick={() => setShortcutError(null)}
+            className="text-xs px-2 py-0.5 rounded cursor-pointer"
+            style={{ color: 'var(--accent)' }}
+          >
+            忽略
+          </button>
+          <button
+            onClick={() => {
+              setShortcutError(null);
+              invoke('open_settings').catch(() => {});
+            }}
+            className="text-xs px-2 py-0.5 rounded cursor-pointer"
+            style={{ color: 'var(--accent)' }}
+          >
+            修改快捷键
+          </button>
+        </div>
+      )}
     </div>
   );
 }

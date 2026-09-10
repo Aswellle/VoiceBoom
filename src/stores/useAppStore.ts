@@ -44,6 +44,16 @@ export interface AppSettings {
   selectedDevice: string;
   /// How transcribed text is injected into the focused input field.
   injectionMode: 'clipboard' | 'typing';
+  /// P0: Input Policy — what happens after recognition finalizes.
+  /// - 'direct': immediately inject into focused field (current default)
+  /// - 'confirm': show insert button in HUD, user must click to inject
+  /// - 'recognize': only display and save, never touch target app
+  inputPolicy: 'direct' | 'confirm' | 'recognize';
+  /// P0: HUD density — how many segments to show.
+  /// - 'compact': only current sentence
+  /// - 'standard': 3-5 sentences
+  /// - 'expanded': scrollable full record
+  hudDensity: 'compact' | 'standard' | 'expanded';
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -67,6 +77,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   // delivers text directly to the focused field like WeChat/iOS dictation,
   // without manual copy-paste.
   injectionMode: 'clipboard',
+  // P0: Default to confirm mode for new users — safer than direct injection
+  inputPolicy: 'confirm',
+  // P0: Default to standard HUD density
+  hudDensity: 'standard',
 }
 
 /// Application state interface
@@ -133,6 +147,13 @@ interface AppState {
   /// Phase 9: Bound to session_id + utterance_id for dedupe.
   injectFinalText: (params: { sessionId: string; utteranceId: string; text: string }) => void;
 
+  // Settings draft — P0: debounce settings persistence
+  // Draft holds un-saved UI state; persistSettings() flushes to backend.
+  draftSettings: Partial<AppSettings>;
+  setDraftSetting: <K extends keyof AppSettings>(key: K, value: AppSettings[K]) => void;
+  persistSettings: () => void;
+  resetDraftSettings: () => void;
+
   // Recognition history (persisted in SQLite). Loaded on demand.
   // Toggle OS auto-start at boot (persists setting + registers with OS).
   setAutoStart: (enabled: boolean) => Promise<void>;
@@ -187,10 +208,36 @@ export const useAppStore = create<AppState>((set, get) => ({
   injectionSessionId: null,
   injectionUtteranceId: null,
 
+  // Settings draft — P0: debounce settings persistence
+  draftSettings: {},
+  setDraftSetting: (key, value) => {
+    set((state) => ({
+      draftSettings: { ...state.draftSettings, [key]: value },
+    }));
+  },
+  persistSettings: () => {
+    const draft = get().draftSettings;
+    if (Object.keys(draft).length === 0) return;
+    // Merge draft into settings and persist
+    set((state) => ({ settings: { ...state.settings, ...draft }, draftSettings: {} }));
+    // Persist each changed key
+    Object.entries(draft).forEach(([key, value]) => {
+      if (key === 'apiKey') {
+        invoke('save_api_key', { apiKey: String(value) }).catch((e) => {
+          console.error(`Failed to save apiKey:`, e);
+        });
+      } else {
+        invoke('save_settings', { key, value: String(value) }).catch((e) => {
+          console.error(`Failed to save setting ${key}:`, e);
+        });
+      }
+    });
+  },
+  resetDraftSettings: () => set({ draftSettings: {} }),
+
   // Status (legacy)
   status: 'idle',
   setStatus: (status) => set({ status }),
-
   // Recognition results
   segments: [],
   currentPartial: '',

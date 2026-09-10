@@ -3,13 +3,67 @@
 @tailwind utilities;
 
 /* VoiceBoom AI — Global Styles */
+/* Semantic design tokens — P0: 暗色主题 token 化 */
 :root {
+  /* Surface tokens */
+  --surface-base: rgba(255, 255, 255, 0.72);
+  --surface-elevated: rgba(255, 255, 255, 0.85);
+  --surface-glass: rgba(255, 255, 255, 0.72);
+  --surface-muted: rgba(0, 0, 0, 0.05);
+
+  /* Text tokens */
+  --text-primary: #1a1a1a;
+  --text-secondary: #6b7280;
+  --text-tertiary: #9ca3af;
+
+  /* Border tokens */
+  --border-subtle: rgba(0, 0, 0, 0.08);
+  --border-focus: rgba(59, 130, 246, 0.5);
+
+  /* Accent tokens */
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --accent-muted: rgba(59, 130, 246, 0.1);
+
+  /* Status tokens */
+  --danger: #ef4444;
+  --success: #22c55e;
+  --warning: #f59e0b;
+
+  /* Focus ring */
+  --focus-ring: 0 0 0 2px var(--border-focus);
+
+  /* Recording glow */
+  --recording-glow: rgba(239, 68, 68, 0.3);
+
+  /* Glass tokens */
   --glass-bg-light: rgba(255, 255, 255, 0.72);
   --glass-bg-dark: rgba(0, 0, 0, 0.65);
   --glass-blur: 30px;
   --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   --glass-radius: 20px;
   --font-sf: "SF Pro Display", "Segoe UI Variable", system-ui, sans-serif;
+}
+
+/* Dark theme tokens */
+.dark {
+  --surface-base: rgba(0, 0, 0, 0.65);
+  --surface-elevated: rgba(255, 255, 255, 0.08);
+  --surface-glass: rgba(0, 0, 0, 0.65);
+  --surface-muted: rgba(255, 255, 255, 0.05);
+
+  --text-primary: #f3f4f6;
+  --text-secondary: #9ca3af;
+  --text-tertiary: #6b7280;
+
+  --border-subtle: rgba(255, 255, 255, 0.1);
+  --border-focus: rgba(96, 165, 250, 0.5);
+
+  --accent: #60a5fa;
+  --accent-hover: #3b82f6;
+  --accent-muted: rgba(96, 165, 250, 0.15);
+
+  --recording-glow: rgba(239, 68, 68, 0.2);
 }
 
 * {
@@ -28,16 +82,13 @@ html, body, #root {
 }
 
 /* Glassmorphism base */
+/* Glassmorphism base */
 .glass {
-  background: var(--glass-bg-light);
+  background: var(--surface-glass);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   box-shadow: var(--glass-shadow);
   border-radius: var(--glass-radius);
-}
-
-.glass-dark {
-  background: var(--glass-bg-dark);
 }
 
 /* Recording indicator pulse */
@@ -50,15 +101,20 @@ html, body, #root {
   animation: pulse-recording 1.5s ease-in-out infinite;
 }
 
-/* Waveform animation */
-@keyframes waveform-bar {
-  0%, 100% { transform: scaleY(0.3); }
-  50% { transform: scaleY(1); }
+/* Focus ring for accessibility */
+:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: 2px;
 }
 
-/* Scrollbar styling */
-::-webkit-scrollbar {
-  width: 4px;
+/* HUD state animations */
+@keyframes hud-listening {
+  0%, 100% { box-shadow: 0 0 0 0 var(--recording-glow); }
+  50% { box-shadow: 0 0 0 8px transparent; }
+}
+
+.hud-listening {
+  animation: hud-listening 2s ease-in-out infinite;
 }
 ::-webkit-scrollbar-track {
   background: transparent;

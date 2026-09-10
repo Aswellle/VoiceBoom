@@ -258,13 +258,7 @@ describe("FloatingWindow", () => {
     rerender(<FloatingWindow />);
     expect(setSize.mock.calls.length).toBeGreaterThan(callsAfterFirst);
   });
-  it("shows the scroll-to-bottom FAB only after the user scrolls up", () => {
-    useAppStore.setState({
-      segments: [
-        makeSegment({ id: "a", text: "旧的第一段识别文字" }),
-        makeSegment({ id: "b", text: "新的第二段识别文字" }),
-      ],
-    });
+  it("scrolls to top for newest-first display", () => {
     const { container } = render(<FloatingWindow />);
 
     const scrollHost = container.querySelector(
@@ -272,10 +266,7 @@ describe("FloatingWindow", () => {
     ) as HTMLElement;
     expect(scrollHost).toBeTruthy();
 
-    expect(
-      screen.queryByRole("button", { name: "返回最新内容" })
-    ).toBeNull();
-
+    // P0: Newest-first design scrolls to top, not bottom
     Object.defineProperty(scrollHost, "scrollHeight", {
       value: 500,
       configurable: true,
@@ -290,8 +281,9 @@ describe("FloatingWindow", () => {
     });
     fireEvent.scroll(scrollHost);
 
+    // P0: No scroll-to-bottom FAB in newest-first design
     expect(
-      screen.getByRole("button", { name: "返回最新内容" })
-    ).toBeInTheDocument();
+      screen.queryByRole("button", { name: "返回最新内容" })
+    ).toBeNull();
   });
 });
