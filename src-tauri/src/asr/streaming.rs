@@ -13,8 +13,8 @@ use tokio::sync::Mutex;
 /// Manages the active ASR session.
 #[derive(Clone)]
 pub struct AsrManager {
-    session: Option<Arc<Mutex<Box<dyn AsrSession>>>>,
-    config: Option<AsrConfig>,
+    pub(crate) session: Option<Arc<Mutex<Box<dyn AsrSession>>>>,
+    pub(crate) config: Option<AsrConfig>,
 }
 
 impl AsrManager {

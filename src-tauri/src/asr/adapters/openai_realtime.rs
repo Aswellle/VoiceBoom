@@ -22,8 +22,8 @@ use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::asr::{AsrEvent, AsrSession};
 
 /// Parsed OpenAI Realtime event.
-#[derive(Debug)]
-enum OpenAIEvent {
+#[derive(Debug, PartialEq)]
+pub enum OpenAIEvent {
     Partial { text: String },
     Final { text: String },
     SessionCreated,
@@ -33,7 +33,7 @@ enum OpenAIEvent {
 }
 
 /// Parse an OpenAI Realtime WebSocket JSON message.
-fn parse_openai_event(json: &serde_json::Value) -> Option<OpenAIEvent> {
+pub fn parse_openai_event(json: &serde_json::Value) -> Option<OpenAIEvent> {
     let event_type = json["type"].as_str()?;
 
     match event_type {

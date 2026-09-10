@@ -23,8 +23,8 @@ use crate::asr::{AsrConfig, AsrEvent, AsrSession};
 // ── Deepgram event parser ─────────────────────────────────────────────
 
 /// Parsed Deepgram WebSocket event.
-#[derive(Debug)]
-enum DeepgramEvent {
+#[derive(Debug, PartialEq)]
+pub enum DeepgramEvent {
     Partial { text: String, confidence: Option<f64> },
     SegmentFinal { text: String, confidence: Option<f64> },
     UtteranceFinal { text: String, confidence: Option<f64> },
@@ -35,7 +35,7 @@ enum DeepgramEvent {
 }
 
 /// Parse a Deepgram Results JSON message.
-fn parse_deepgram_results(json: &serde_json::Value) -> Option<DeepgramEvent> {
+pub fn parse_deepgram_results(json: &serde_json::Value) -> Option<DeepgramEvent> {
     if json["type"] != "Results" {
         return None;
     }
@@ -73,7 +73,7 @@ fn parse_deepgram_results(json: &serde_json::Value) -> Option<DeepgramEvent> {
 }
 
 /// Parse any Deepgram WebSocket event.
-fn parse_deepgram_event(json: &serde_json::Value) -> Option<DeepgramEvent> {
+pub fn parse_deepgram_event(json: &serde_json::Value) -> Option<DeepgramEvent> {
     match json["type"].as_str() {
         Some("Results") => parse_deepgram_results(json),
         Some("SpeechStarted") => Some(DeepgramEvent::SpeechStarted),
