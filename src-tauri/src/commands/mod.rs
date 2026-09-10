@@ -1,7 +1,7 @@
-use crate::AppState;
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::resources;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use crate::AppState;
+use std::sync::atomic::{AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -17,49 +17,14 @@ fn generate_session_id() -> String {
     format!("{}-{}", ts, counter)
 }
 
+/// Emit a `recording:state` event with the current session snapshot.
+fn emit_state(app_handle: &AppHandle, state: &crate::session::RecordingSession) {
+    let _ = app_handle.emit("recording:state", state.clone());
+}
+
 // Tauri command handlers — bridge between frontend and Rust backend
-/// RAII claim on the "starting a recording" critical section.
-/// Acquired atomically at the top of start_recording and released on Drop,
-/// which covers every early return in the start sequence.
-pub struct RecordingClaim<'a> {
-    flag: &'a AtomicBool,
-}
 
-impl<'a> RecordingClaim<'a> {
-    /// Returns Some(claim) if this caller won the race, None if a start is already in flight.
-    pub fn try_acquire(flag: &'a AtomicBool) -> Option<Self> {
-        flag.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-            .ok()
-            .map(|_| Self { flag })
-    }
-}
 
-impl Drop for RecordingClaim<'_> {
-    fn drop(&mut self) {
-        self.flag.store(false, Ordering::Release);
-    }
-}
-
-/// RAII guard for bridge_active flag.
-/// Ensures the flag is cleared when the bridge task exits, even on panic.
-struct BridgeActiveGuard {
-    flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
-}
-
-impl Drop for BridgeActiveGuard {
-    fn drop(&mut self) {
-        self.flag.store(false, std::sync::atomic::Ordering::Release);
-        log::debug!("Bridge task exited, bridge_active cleared");
-    }
-}
-
-/// Whether a local engine is actually usable right now.
-///
-/// Process bookkeeping alone was unreliable in both directions — a crashed
-/// server still looked "running", and one that survived an app restart looked
-/// "stopped" — so the HTTP engine is confirmed by probing its port.
-
-/// Parse engine type string to enum
 fn parse_engine_type(engine: &str) -> AsrEngineType {
     match engine {
         "openai_whisper" => AsrEngineType::OpenaiWhisper,
@@ -83,14 +48,24 @@ pub async fn start_recording(
     vadSensitivity: Option<u32>,
 ) -> Result<(), String> {
     let session_id = generate_session_id();
-    log::info!("[session={}] recording.start", session_id);
+    let engine_name = engine.clone().unwrap_or_else(|| "openai_whisper".to_string());
+    let language_name = language.clone().unwrap_or_else(|| "auto".to_string());
 
-    // Guard: prevent double-start using an atomic claim.
-    // The claim is held for the whole start sequence and released on any early
-    // return via RecordingClaim's Drop, so two concurrent callers can never both
-    // reach audio.start_recording().
-    let _claim = RecordingClaim::try_acquire(&state.starting)
-        .ok_or_else(|| "已经在录音中，请先停止当前录音".to_string())?;
+    // ── State transition: Idle/Error → Starting ─────────────────────
+    // Replaces RecordingClaim: the session state machine guarantees only one
+    // active recording at a time. begin_start() fails if not in Idle/Error.
+    {
+        let mut session = state.session.lock().map_err(|e| e.to_string())?;
+        session.session_id = session_id.clone();
+        session.engine = engine_name.clone();
+        session.language = language_name.clone();
+        session.begin_start().map_err(|e| {
+            log::warn!("[session={}] recording.start rejected: {}", session_id, e);
+            "已经在录音中，请先停止当前录音".to_string()
+        })?;
+        emit_state(&app_handle, &session);
+    }
+    log::info!("[session={}] recording.start engine={}", session_id, engine_name);
 
     // The previous recording's bridge task may still be finishing its final
     // transcription (seconds, for local engines). Wait for it to wind down
@@ -100,20 +75,28 @@ pub async fn start_recording(
         const WAIT_STEP: std::time::Duration = std::time::Duration::from_millis(50);
         const MAX_WAIT: std::time::Duration = std::time::Duration::from_secs(10);
         let started = std::time::Instant::now();
-        while state.bridge_active.load(std::sync::atomic::Ordering::Acquire) {
+        loop {
+            let active = {
+                let session = state.session.lock().map_err(|e| e.to_string())?;
+                let active = session.is_active();
+                if !active {
+                    // Finalize the wait: reset the old session for reuse
+                    drop(session);
+                    let mut session = state.session.lock().map_err(|e| e.to_string())?;
+                    session.reset();
+                }
+                active
+            };
+            if !active {
+                break;
+            }
             if started.elapsed() >= MAX_WAIT {
+                let mut session = state.session.lock().map_err(|e| e.to_string())?;
+                session.fail("上一段语音仍在识别中，请稍候再试");
+                emit_state(&app_handle, &session);
                 return Err("上一段语音仍在识别中，请稍候再试".to_string());
             }
             tokio::time::sleep(WAIT_STEP).await;
-        }
-    }
-
-    {
-        let audio_guard = state.audio_capture.lock().map_err(|e| e.to_string())?;
-        if let Some(ref audio) = *audio_guard {
-            if audio.is_recording() {
-                return Err("已经在录音中，请先停止当前录音".to_string());
-            }
         }
     }
 
@@ -122,7 +105,6 @@ pub async fn start_recording(
 
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
-    let engine_name = engine.clone().unwrap_or_else(|| "openai_whisper".to_string());
     let is_local = matches!(engine_type, AsrEngineType::Funasr);
     log::info!("[session={}] recording.config engine={} is_local={}", session_id, engine_name, is_local);
     if is_local {
@@ -166,6 +148,9 @@ pub async fn start_recording(
             Err(e) => {
                 log::error!("Model check failed: {}", e);
                 let _ = app_handle.emit("asr:error", e.clone());
+                let mut session = state.session.lock().map_err(|e| e.to_string())?;
+                session.fail(&e);
+                emit_state(&app_handle, &session);
                 return Err(e);
             }
         }
@@ -212,6 +197,9 @@ pub async fn start_recording(
     // would capture audio into an engine that can't produce results, then blame
     // the microphone on stop. The specific error was already emitted above.
     if !asr_initialized {
+        let mut session = state.session.lock().map_err(|e| e.to_string())?;
+        session.fail("ASR 引擎初始化失败，请检查配置");
+        emit_state(&app_handle, &session);
         return Err("ASR 引擎初始化失败，请检查配置".to_string());
     }
 
@@ -221,9 +209,22 @@ pub async fn start_recording(
         if let Some(ref mut audio) = *audio_guard {
             audio.start_recording(device.as_deref()).map_err(|e| e.to_string())?
         } else {
+            let mut session = state.session.lock().map_err(|e| e.to_string())?;
+            session.fail("Audio capture not initialized");
+            emit_state(&app_handle, &session);
             return Err("Audio capture not initialized".to_string());
         }
     };
+
+    // ── State transition: Starting → Recording ──────────────────────
+    {
+        let mut session = state.session.lock().map_err(|e| e.to_string())?;
+        session.mark_recording().map_err(|e| {
+            log::error!("[session={}] state transition failed: {}", session_id, e);
+            e
+        })?;
+        emit_state(&app_handle, &session);
+    }
 
     // Spawn bridge task that forwards audio -> ASR -> frontend events.
     //
@@ -240,13 +241,18 @@ pub async fn start_recording(
         let guard = state.asr_manager.lock().map_err(|e| e.to_string())?;
         guard.clone()
     };
-    let session_id = session_id;
+    let session_for_bridge = state.session.clone();
     let app_handle_clone = app_handle.clone();
-
-    // Mark bridge as active before spawning. The Arc handle is cloned into the
-    // task so it can clear the flag when it exits (see BridgeActiveGuard).
-    state.bridge_active.store(true, std::sync::atomic::Ordering::Release);
-    let bridge_flag = std::sync::Arc::clone(&state.bridge_active);
+    // Spawn bridge task that forwards audio -> ASR -> frontend events.
+    //
+    // Endpoint detection lives entirely inside the ASR adapter now (sherpa-onnx's
+    // Silero VAD for local engines, or the cloud provider's own segmentation).
+    // This task used to run a second, independent energy-based VAD here and
+    // decide on its own when to call flush() — with local engines also running
+    // Silero VAD internally, the two endpoint detectors raced: one could flush
+    // mid-segment while the other was still accumulating, which is what produced
+    // truncated/duplicated results and stuck "still processing" states. The
+    // bridge's only job now is: push samples in, and forward whatever the
 
     // Diagnostic: count frames and emit a heartbeat so the UI can show whether
     // audio is actually flowing into the ASR pipeline.
@@ -255,8 +261,6 @@ pub async fn start_recording(
     let mut had_partial: bool = false; // Track if any partial result was emitted
     let session_id_clone = session_id.clone();
     tokio::spawn(async move {
-        // Ensure bridge_active is cleared when task exits (success or panic)
-        let _guard = BridgeActiveGuard { flag: bridge_flag };
         log::info!("[session={}] bridge.start frames=0", session_id_clone);
 
         loop {
@@ -302,7 +306,16 @@ pub async fn start_recording(
                 }
                 None => {
                     // Channel closed, audio capture stopped — flush for any
+                    // trailing audio the adapter hadn't finalized yet.
                     log::info!("[session={}] recording.flush frames={} had_partial={}", session_id_clone, frame_count, had_partial);
+
+                    // ── State transition: Stopping → Finalizing ───────────
+                    if let Ok(mut session) = session_for_bridge.lock() {
+                        if session.mark_finalizing().is_ok() {
+                            emit_state(&app_handle_clone, &session);
+                        }
+                    }
+
                     if let Some(ref asr) = asr_for_bridge {
                         match asr.flush().await {
                             Ok(Some(result)) => {
@@ -330,6 +343,15 @@ pub async fn start_recording(
                             }
                         }
                     }
+
+                    // ── State transition: Finalizing → Idle ────────────────
+                    if let Ok(mut session) = session_for_bridge.lock() {
+                        if let Err(e) = session.complete() {
+                            log::warn!("[session={}] finalizing→idle failed: {}", session.session_id, e);
+                        }
+                        emit_state(&app_handle_clone, &session);
+                        log::info!("[session={}] recording.complete", session.session_id);
+                    }
                     break;
                 }
             }
@@ -349,7 +371,18 @@ pub async fn stop_recording(
     app_handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    log::info!("recording.stop requested");
+    // ── State transition: Recording → Stopping ────────────────────
+    {
+        let mut session = state.session.lock().map_err(|e| e.to_string())?;
+        let sid = session.session_id.clone();
+        session.begin_stop().map_err(|e| {
+            log::warn!("[session={}] recording.stop rejected: {}", sid, e);
+            e
+        })?;
+        emit_state(&app_handle, &session);
+        log::info!("[session={}] recording.stop", sid);
+    }
+
     if let Some(ref mut audio) = *state.audio_capture.lock().map_err(|e| e.to_string())? {
         audio.stop_recording();
     }

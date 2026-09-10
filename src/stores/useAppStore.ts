@@ -19,6 +19,10 @@ export interface RecognitionSegment {
 /// Application status
 export type AppStatus = 'idle' | 'listening' | 'result';
 
+/// Recording session state — mirrors the backend RecordingState enum (Phase 2).
+/// This is the authoritative source of truth for recording status.
+export type RecordingSessionState = 'idle' | 'starting' | 'recording' | 'stopping' | 'finalizing' | 'error';
+
 /// ASR engine type
 export type AsrEngineType = 'openai_whisper' | 'deepgram' | 'whisper_cpp' | 'funasr';
 
@@ -67,10 +71,13 @@ const DEFAULT_SETTINGS: AppSettings = {
 
 /// Application state interface
 interface AppState {
-  // Status
+  // Session state — authoritative recording state from backend (Phase 2)
+  sessionState: RecordingSessionState;
+  setSessionState: (state: RecordingSessionState) => void;
+
+  // Status (legacy, derived from sessionState for backward compat)
   status: AppStatus;
   setStatus: (status: AppStatus) => void;
-
   // Recognition results
   segments: RecognitionSegment[];
   currentPartial: string;
@@ -156,7 +163,17 @@ function generateId(): string {
 let toastTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useAppStore = create<AppState>((set, get) => ({
-  // Status
+  // Session state — authoritative recording state from backend (Phase 2)
+  sessionState: 'idle',
+  setSessionState: (state) => {
+    set({ sessionState: state });
+    // Derive legacy status for backward compatibility
+    const legacyStatus: AppStatus =
+      state === 'recording' || state === 'starting' ? 'listening' : 'idle';
+    set({ status: legacyStatus });
+  },
+
+  // Status (legacy)
   status: 'idle',
   setStatus: (status) => set({ status }),
 

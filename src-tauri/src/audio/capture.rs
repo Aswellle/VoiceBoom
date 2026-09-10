@@ -34,6 +34,11 @@ impl AudioCapture {
     ///
     /// Uses the device's native sample rate (not all devices support 16kHz) and
     /// resamples to TARGET_SAMPLE_RATE in the callback.
+    ///
+    /// P0-C fix: returns an error if the CPAL thread fails to start (no device,
+    /// build stream failure, play failure) instead of leaving is_recording=true.
+    /// A startup confirmation channel ensures is_recording is only set when
+    /// audio is actually flowing.
     pub fn start_recording(
         &mut self,
         device_name: Option<&str>,
@@ -52,6 +57,10 @@ impl AudioCapture {
         // Channel for sending PCM samples to ASR
         let (audio_tx, audio_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
         self.audio_tx = Some(audio_tx.clone());
+
+        // P0-C fix: startup confirmation channel. The thread sends true after
+        // stream.play() succeeds, false on any startup failure.
+        let (startup_tx, startup_rx) = std::sync::mpsc::channel::<bool>();
 
         let is_recording = self.is_recording.clone();
 
@@ -72,6 +81,7 @@ impl AudioCapture {
                 Some(d) => d,
                 None => {
                     log::error!("No input device available");
+                    let _ = startup_tx.send(false);
                     return;
                 }
             };
@@ -80,6 +90,7 @@ impl AudioCapture {
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("Failed to get default input config: {}", e);
+                    let _ = startup_tx.send(false);
                     return;
                 }
             };
@@ -180,6 +191,7 @@ impl AudioCapture {
                     ),
                     _ => {
                         eprintln!("Unsupported sample format");
+                        let _ = startup_tx.send(false);
                         return;
                     }
                 };
@@ -188,14 +200,19 @@ impl AudioCapture {
                 Ok(s) => s,
                 Err(e) => {
                     log::error!("Failed to build input stream: {}", e);
+                    let _ = startup_tx.send(false);
                     return;
                 }
             };
 
             if let Err(e) = stream.play() {
                 log::error!("Failed to play stream: {}", e);
+                let _ = startup_tx.send(false);
                 return;
             }
+
+            // P0-C fix: signal successful startup
+            let _ = startup_tx.send(true);
 
             log::info!(
                 "Audio capture started at {} Hz, resampling to {} Hz",
@@ -215,8 +232,22 @@ impl AudioCapture {
             log::info!("Audio capture stopped");
         }));
 
-        self.is_recording.store(true, Ordering::SeqCst);
-        Ok(audio_rx)
+        // P0-C fix: wait for startup confirmation before marking as recording.
+        // If the thread failed to start, return an error instead of leaving
+        // is_recording stuck at true.
+        match startup_rx.recv_timeout(std::time::Duration::from_secs(5)) {
+            Ok(true) => {
+                self.is_recording.store(true, Ordering::SeqCst);
+                Ok(audio_rx)
+            }
+            Ok(false) => {
+                anyhow::bail!("音频采集启动失败：无法初始化麦克风或音频流")
+            }
+            Err(_) => {
+                // Timeout — thread didn't report back
+                anyhow::bail!("音频采集启动超时：音频线程未响应")
+            }
+        }
     }
 
     /// Stop recording.

@@ -1,5 +1,6 @@
-// VoiceBoom AI — Tauri 2.0 library entry point
-// Contains the application setup and run function
+mod session;
+
+pub use session::{RecordingSession, RecordingState, SessionHandle};
 
 mod audio;
 mod asr;
@@ -81,18 +82,19 @@ impl log::Log for Logger {
     fn flush(&self) {}
 }
 
-/// Shared application state
+/// Shared application state.
+///
+/// Recording state is managed exclusively through the `session` handle
+/// (Architecture Lock A). The `starting` / `bridge_active` flags are replaced
+/// by `session.state` checks.
 pub struct AppState {
     pub audio_capture: std::sync::Mutex<Option<AudioCapture>>,
     pub asr_manager: std::sync::Mutex<Option<AsrManager>>,
     pub db: std::sync::Mutex<Option<Database>>,
     pub shortcut_manager: std::sync::Mutex<Option<GlobalShortcutManager>>,
     pub resource_manager: std::sync::Mutex<Option<ResourceManager>>,
-    /// Atomic guard against concurrent start_recording calls
-    pub starting: std::sync::atomic::AtomicBool,
-    /// Atomic flag indicating a bridge task is actively running.
-    /// Arc so the spawned bridge task can hold its own handle.
-    pub bridge_active: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Single authoritative recording session state.
+    pub session: SessionHandle,
 }
 
 impl AppState {
@@ -103,14 +105,17 @@ impl AppState {
             db: std::sync::Mutex::new(None),
             shortcut_manager: std::sync::Mutex::new(None),
             resource_manager: std::sync::Mutex::new(None),
-            starting: std::sync::atomic::AtomicBool::new(false),
-            bridge_active: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            session: session::new_session_handle(
+                "init".into(),
+                String::new(),
+                String::new(),
+            ),
         }
     }
 }
 
-/// Run the VoiceBoom application
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
+
+ #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize file-based logging so we can diagnose runtime issues in the
     // released GUI app (stderr is invisible there).

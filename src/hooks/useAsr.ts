@@ -4,8 +4,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
-import { useAppStore } from '../stores/useAppStore';
-
+import { useAppStore, RecordingSessionState } from '../stores/useAppStore';
 /// ASR event payload from Rust backend
 interface AsrEvent {
   text: string;
@@ -22,7 +21,7 @@ interface UseAsrReturn {
 }
 
 export function useAsr(): UseAsrReturn {
-  const { setStatus, addSegment, updatePartial } = useAppStore();
+  const { setStatus, addSegment, updatePartial, setSessionState } = useAppStore();
   const engine = useAppStore((s) => s.settings.engine);
   const language = useAppStore((s) => s.settings.language);
   const apiKey = useAppStore((s) => s.settings.apiKey);
@@ -32,6 +31,21 @@ export function useAsr(): UseAsrReturn {
   const isListeningRef = useRef(false);
   const [isListening, setIsListening] = useState(false);
   const audioLevelInterval = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Phase 2: subscribe to authoritative session state from backend.
+  // The backend session state machine is the single source of truth;
+  // the frontend derives isListening from it rather than tracking independently.
+  useEffect(() => {
+    const unlistenState = listen<{ state: RecordingSessionState }>('recording:state', (event) => {
+      const { state } = event.payload;
+      setSessionState(state);
+      const active = state === 'starting' || state === 'recording' || state === 'stopping' || state === 'finalizing';
+      setIsListening(active);
+      isListeningRef.current = active;
+    });
+    return () => {
+      unlistenState.then((f) => f());
+    };
+  }, [setSessionState]);
 
   // Listen for ASR results from Rust backend
   useEffect(() => {
