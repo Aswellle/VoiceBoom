@@ -422,6 +422,11 @@ export const useAppStore = create<AppState>((set, get) => ({
   injectFinalText: (params) => {
     const mode = get().settings.injectionMode;
     const { sessionId, utteranceId, text } = params;
+    // Guard: skip empty text to avoid silent no-op injections.
+    if (!text || typeof text !== 'string') {
+      console.warn('injectFinalText: empty or invalid text, skipping');
+      return;
+    }
     // Phase 9: Pass session_id + utterance_id for dedupe and stale session protection.
     invoke('inject_text', { sessionId, utteranceId, text, mode })
       .then((result: unknown) => {

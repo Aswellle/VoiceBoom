@@ -7,6 +7,7 @@ import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
+import { ENGINES, type EngineInfo } from '../../constants/engines';
 
 type TabId = 'basic' | 'ai' | 'appearance' | 'personalization' | 'advanced';
 
@@ -23,63 +24,6 @@ const TABS: Tab[] = [
   { id: 'personalization', label: '个性化', icon: '✨' },
   { id: 'advanced', label: '高级', icon: '⚙️' },
 ];
-
-/// Engine metadata for UI rendering
-interface EngineInfo {
-  id: AsrEngineType;
-  name: string;
-  description: string;
-  keyPlaceholder: string;
-  keyHelp: string;
-  endpointPlaceholder: string;
-  isLocal: boolean;
-  downloadUrl?: string;
-  downloadHelp?: string;
-}
-
-const ENGINES: EngineInfo[] = [
-  {
-    id: 'openai_whisper',
-    name: 'OpenAI Whisper API',
-    description: 'OpenAI 官方云端语音识别，支持多语言，准确率高',
-    keyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
-    keyHelp: '从 platform.openai.com/api-keys 获取 API Key',
-    endpointPlaceholder: 'wss://api.openai.com/v1/audio/transcriptions',
-    isLocal: false,
-  },
-  {
-    id: 'deepgram',
-    name: 'Deepgram',
-    description: '专业语音识别服务，低延迟流式转写',
-    keyPlaceholder: 'xxxxxxxxxxxxxxxxxxxxxxxx',
-    keyHelp: '从 console.deepgram.com/settings/api-keys 获取 API Key',
-    endpointPlaceholder: 'wss://api.deepgram.com/v1/listen',
-    isLocal: false,
-  },
-  {
-    id: 'whisper_cpp',
-    name: 'Whisper（本地）',
-    description: '多语言离线引擎，当前版本暂不可用，后续版本将整合',
-    keyPlaceholder: '（本地引擎无需 API Key）',
-    keyHelp: '本地引擎不需要 API Key',
-    endpointPlaceholder: '（暂不可用）',
-    isLocal: true,
-    downloadUrl: 'https://github.com/ggerganov/whisper.cpp',
-    downloadHelp: '当前版本使用 SenseVoice，Whisper 支持将在后续版本加入',
-  },
-  {
-    id: 'funasr',
-    name: 'SenseVoice（本地）',
-    description: '阿里达摩院多语言引擎，内置离线运行，中文识别优秀',
-    keyPlaceholder: '（本地引擎无需 API Key）',
-    keyHelp: '本地引擎不需要 API Key',
-    endpointPlaceholder: '（自动配置）',
-    isLocal: true,
-    downloadUrl: 'https://huggingface.co/csukuangfj/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17',
-    downloadHelp: '模型已内置，开箱即用',
-  },
-];
-
 /// Slider component
 function Slider({
   label,

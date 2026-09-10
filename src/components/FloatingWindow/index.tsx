@@ -13,6 +13,7 @@ import { useAppStore, type RecognitionSegment } from '../../stores/useAppStore';
 import { copyToClipboard } from '../../utils/clipboard';
 import { Waveform } from '../Waveform';
 import { useGlobalShortcut } from '../../hooks/useGlobalShortcut';
+import { ENGINE_DISPLAY_NAMES } from '../../constants/engines';
 
 // ---------------------------------------------------------------------------
 // Window-budget constants (mirror tauri.conf.json so JS and Rust agree).
@@ -121,26 +122,7 @@ export function FloatingWindow() {
   const loadSettings = useAppStore((s) => s.loadSettings);
   const toastMessage = useAppStore((s) => s.toastMessage);
   const settingsLoaded = useAppStore((s) => s.settingsLoaded);
-
   const [engineReady, setEngineReady] = useState<boolean | null>(null);
-  // P0: canScrollUp drives the "scroll to bottom" FAB — shows when the user has
-  // scrolled up to read older text, letting them quickly return to live output.
-  const [canScrollUp, setCanScrollUp] = useState(false);
-
-  // -----------------------------------------------------------------------
-  // Scroll listener: track whether the user has scrolled away from the bottom
-  // -----------------------------------------------------------------------
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      setCanScrollUp(el.scrollHeight - el.scrollTop - el.clientHeight >= SCROLL_THRESHOLD);
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // -----------------------------------------------------------------------
 
   // contentRef wraps the actual rendered segments so we can measure its
   // natural (unconstrained) height. scrollRef is the overflow container.
@@ -254,13 +236,14 @@ export function FloatingWindow() {
         : '按住快捷键开始说话'
       : '';
 
-  const engineLabel: Record<string, string> = {
-    openai_whisper: 'Whisper API',
-    deepgram: 'Deepgram',
-    whisper_cpp: 'SenseVoice',
-    funasr: 'SenseVoice',
-  };
-  const currentEngineLabel = engineLabel[settings.engine] || settings.engine;
+  const currentEngineLabel = ENGINE_DISPLAY_NAMES[settings.engine] || settings.engine;
+
+  // P0: Filter segments by HUD density and reverse for newest-first display.
+  // Combined into single useMemo to avoid double array allocation.
+  const displaySegments = useMemo(() => {
+    const count = settings.hudDensity === 'compact' ? 1 : settings.hudDensity === 'standard' ? 5 : segments.length;
+    return segments.slice(-count).reverse();
+  }, [segments, settings.hudDensity]);
 
   // #3 fix: derive the effective dark state. In "auto" mode, follow the OS
   // preference so the glass-dark class and background color stay in sync.
@@ -268,22 +251,6 @@ export function FloatingWindow() {
     if (settings.theme !== 'auto') return settings.theme === 'dark';
     return window.matchMedia('(prefers-color-scheme: dark)').matches;
   }, [settings.theme]);
-
-  // P0: Filter segments by HUD density
-  const visibleSegments = useMemo(() => {
-    if (settings.hudDensity === 'compact') {
-      return segments.slice(-1);
-    }
-    if (settings.hudDensity === 'standard') {
-      return segments.slice(-5);
-    }
-    return segments; // expanded
-  }, [segments, settings.hudDensity]);
-
-  // P0: Newest-first ordering — reverse for display
-  const displaySegments = useMemo(() => {
-    return [...visibleSegments].reverse();
-  }, [visibleSegments]);
   // -----------------------------------------------------------------------
   // Render — P0: HUD with 3 states (Idle/Listening/Result), newest-first
   // -----------------------------------------------------------------------
