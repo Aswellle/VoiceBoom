@@ -17,6 +17,8 @@ use serde;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
+use crate::injection::model::InjectionTarget;
+
 /// The logical states of a recording session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -50,6 +52,8 @@ pub struct RecordingSession {
     pub state: RecordingState,
     pub engine: String,
     pub language: String,
+    /// Captured target at Press time (Architecture Lock A).
+    pub target: Option<InjectionTarget>,
     /// Unix milliseconds when recording actually began.
     pub started_at: Option<u64>,
     /// Unix milliseconds when the session ended (success or failure).
@@ -66,6 +70,27 @@ impl RecordingSession {
             state: RecordingState::Idle,
             engine,
             language,
+            target: None,
+            started_at: None,
+            stopped_at: None,
+            error: None,
+        }
+    }
+
+    /// Create a new session with a captured target.
+    /// Phase 2: Target must be captured at Press time.
+    pub fn with_target(
+        session_id: String,
+        engine: String,
+        language: String,
+        target: InjectionTarget,
+    ) -> Self {
+        Self {
+            session_id,
+            state: RecordingState::Idle,
+            engine,
+            language,
+            target: Some(target),
             started_at: None,
             stopped_at: None,
             error: None,

@@ -8,6 +8,7 @@ mod asr;
 mod commands;
 mod db;
 mod inject;
+mod injection;
 mod resources;
 mod shortcut;
 mod tray;
