@@ -1,4 +1,5 @@
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
+use crate::asr::AsrEvent;
 use crate::resources;
 use crate::AppState;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -22,6 +23,24 @@ fn emit_state(app_handle: &AppHandle, state: &crate::session::RecordingSession) 
     let _ = app_handle.emit("recording:state", state.clone());
 }
 
+/// Emit an `asr:result` event from an AsrEvent.
+fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
+    let _ = app_handle.emit("asr:result", serde_json::json!({
+        "text": event.text().unwrap_or(""),
+        "is_final": event.is_final(),
+        "language": match event {
+            crate::asr::AsrEvent::Partial { language, .. }
+            | crate::asr::AsrEvent::SegmentFinal { language, .. }
+            | crate::asr::AsrEvent::UtteranceFinal { language, .. } => language.clone(),
+            _ => None,
+        },
+        "confidence": match event {
+            crate::asr::AsrEvent::SegmentFinal { confidence, .. }
+            | crate::asr::AsrEvent::UtteranceFinal { confidence, .. } => *confidence,
+            _ => None,
+        },
+    }));
+}
 // Tauri command handlers — bridge between frontend and Rust backend
 
 
@@ -230,42 +249,37 @@ pub async fn start_recording(
     //
     // Endpoint detection lives entirely inside the ASR adapter now (sherpa-onnx's
     // Silero VAD for local engines, or the cloud provider's own segmentation).
-    // This task used to run a second, independent energy-based VAD here and
-    // decide on its own when to call flush() — with local engines also running
-    // Silero VAD internally, the two endpoint detectors raced: one could flush
-    // mid-segment while the other was still accumulating, which is what produced
-    // truncated/duplicated results and stuck "still processing" states. The
-    // bridge's only job now is: push samples in, and forward whatever the
-    // adapter reports out — is_final tells the frontend which event it got.
-    let asr_for_bridge = {
+    // The bridge's only job: push samples in, forward whatever the adapter reports.
+    let asr_manager_for_bridge = {
         let guard = state.asr_manager.lock().map_err(|e| e.to_string())?;
         guard.clone()
     };
+    // Phase 9: AsrManager is always initialized in setup, but handle None gracefully.
+    let asr_manager_for_bridge = match asr_manager_for_bridge {
+        Some(mgr) => mgr,
+        None => {
+            let mut session = state.session.lock().map_err(|e| e.to_string())?;
+            session.fail("ASR manager not initialized");
+            emit_state(&app_handle, &session);
+            return Err("ASR manager not initialized".to_string());
+        }
+    };
     let session_for_bridge = state.session.clone();
     let app_handle_clone = app_handle.clone();
-    // Spawn bridge task that forwards audio -> ASR -> frontend events.
-    //
-    // Endpoint detection lives entirely inside the ASR adapter now (sherpa-onnx's
-    // Silero VAD for local engines, or the cloud provider's own segmentation).
-    // This task used to run a second, independent energy-based VAD here and
-    // decide on its own when to call flush() — with local engines also running
-    // Silero VAD internally, the two endpoint detectors raced: one could flush
-    // mid-segment while the other was still accumulating, which is what produced
-    // truncated/duplicated results and stuck "still processing" states. The
-    // bridge's only job now is: push samples in, and forward whatever the
+    let session_id_clone = session_id.clone();
 
     // Diagnostic: count frames and emit a heartbeat so the UI can show whether
     // audio is actually flowing into the ASR pipeline.
     let mut frame_count: u64 = 0;
     let mut last_heartbeat = std::time::Instant::now();
-    let mut had_partial: bool = false; // Track if any partial result was emitted
-    let session_id_clone = session_id.clone();
+    let mut had_partial: bool = false;
+
     tokio::spawn(async move {
         log::info!("[session={}] bridge.start frames=0", session_id_clone);
 
         loop {
             match audio_rx.recv().await {
-                Some(samples) => {
+                Some(frame) => {
                     frame_count += 1;
 
                     // Emit a heartbeat every 500ms so the UI knows audio is flowing.
@@ -273,40 +287,31 @@ pub async fn start_recording(
                         last_heartbeat = std::time::Instant::now();
                         let _ = app_handle_clone.emit("asr:heartbeat", serde_json::json!({
                             "frames": frame_count,
-                            "samples": samples.len(),
+                            "samples": frame.samples.len(),
                         }));
                     }
 
-                    if let Some(ref asr) = asr_for_bridge {
-                        if let Err(e) = asr.send_audio(&samples).await {
-                            log::warn!("Failed to send audio frame: {}", e);
+                    // Push audio to ASR and poll for results.
+                    if let Err(e) = asr_manager_for_bridge.send_audio(&frame.samples).await {
+                        log::warn!("Failed to send audio frame: {}", e);
+                    }
+                    // Poll for events every frame so partials/finals surface promptly.
+                    match asr_manager_for_bridge.receive_event().await {
+                        Ok(Some(event)) => {
+                            let is_partial = event.text().map_or(false, |t| !t.trim().is_empty());
+                            if is_partial {
+                                had_partial = true;
+                            }
+                            emit_asr_event(&app_handle_clone, &event);
                         }
-                        // The adapter's own VAD decides when a segment is ready;
-                        // poll it every frame so partials/finals surface promptly.
-                        match asr.receive_result().await {
-                            Ok(Some(result)) => {
-                                if !result.text.trim().is_empty() {
-                                    had_partial = true;
-                                }
-                                let _ = app_handle_clone.emit("asr:result", serde_json::json!({
-                                    "text": result.text,
-                                    "is_final": result.is_final,
-                                    "language": result.language,
-                                    "confidence": result.confidence,
-                                }));
-                            }
-                            Ok(None) => {
-                                // No result yet — this is normal between segments.
-                            }
-                            Err(e) => {
-                                log::error!("ASR receive_result error: {}", e);
-                            }
+                        Ok(None) => {}
+                        Err(e) => {
+                            log::error!("ASR receive_event error: {}", e);
                         }
                     }
                 }
                 None => {
-                    // Channel closed, audio capture stopped — flush for any
-                    // trailing audio the adapter hadn't finalized yet.
+                    // Channel closed, audio capture stopped — finalize.
                     log::info!("[session={}] recording.flush frames={} had_partial={}", session_id_clone, frame_count, had_partial);
 
                     // ── State transition: Stopping → Finalizing ───────────
@@ -316,32 +321,28 @@ pub async fn start_recording(
                         }
                     }
 
-                    if let Some(ref asr) = asr_for_bridge {
-                        match asr.flush().await {
-                            Ok(Some(result)) => {
-                                let _ = app_handle_clone.emit("asr:result", serde_json::json!({
-                                    "text": result.text,
-                                    "is_final": true,
-                                    "language": result.language,
-                                    "confidence": result.confidence,
-                                }));
-                            }
-                            Ok(None) => {
-                                // Only emit error if we never got ANY partial results.
-                                // If we did get partials, the user saw text and the lack
-                                // of a final result is normal (VAD didn't segment it).
-                                if had_partial {
-                                    log::debug!("Flush empty but had partial results — no error");
-                                } else {
-                                    log::warn!("Flush returned no text ({} frames processed)", frame_count);
-                                    let _ = app_handle_clone.emit("asr:error", "没有识别到语音内容，请检查麦克风");
-                                }
-                            }
-                            Err(e) => {
-                                log::error!("ASR flush error: {}", e);
-                                let _ = app_handle_clone.emit("asr:error", format!("识别失败: {}", e));
-                            }
-                        }
+                    // Phase 9: Event-driven finalize + drain (no sleep).
+                    // Signal end of audio, then drain events until utterance-final or timeout.
+                    let timeout = std::time::Duration::from_secs(5);
+                    let (events, timed_out) = asr_manager_for_bridge.finalize_and_drain(timeout).await;
+
+                    // Emit all drained events.
+                    for event in &events {
+                        emit_asr_event(&app_handle_clone, event);
+                    }
+
+                    // If timeout, emit finalization_timeout.
+                    if timed_out {
+                        log::warn!("[session={}] finalization_timeout", session_id_clone);
+                        let _ = app_handle_clone.emit("asr:timeout", serde_json::json!({
+                            "message": "识别收尾超时，已强制结束",
+                        }));
+                    }
+
+                    // If no events at all and no partials, emit error.
+                    if events.is_empty() && !had_partial {
+                        log::warn!("[session={}] no text recognized ({} frames)", session_id_clone, frame_count);
+                        let _ = app_handle_clone.emit("asr:error", "没有识别到语音内容，请检查麦克风");
                     }
 
                     // ── State transition: Finalizing → Idle ────────────────
