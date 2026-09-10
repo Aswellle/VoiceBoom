@@ -30,7 +30,7 @@ impl AsrManager {
         // Reuse the resident local adapter across recordings so the SenseVoice
         // ONNX model + Silero VAD (~240 MB) are not reloaded from disk on every
         // push-to-talk press. Cloud adapters are rebuilt per recording.
-        let is_local = matches!(config.engine_type, AsrEngineType::Funasr);
+        let is_local = matches!(config.engine_type, AsrEngineType::LocalSenseVoice);
         let can_reuse = is_local
             && self.session.is_some()
             && self.config.as_ref().map(|prev| {
@@ -50,11 +50,10 @@ impl AsrManager {
         }
 
         // Create the new session. Deepgram uses AsrSession directly;
-        // legacy adapters are wrapped via LegacySessionAdapter.
         let mut session: Box<dyn AsrSession> = match config.engine_type {
-            AsrEngineType::OpenaiWhisper => Box::new(OpenaiRealtimeAdapter::new()),
-            AsrEngineType::Deepgram => Box::new(DeepgramAdapter::new()),
-            AsrEngineType::WhisperCpp | AsrEngineType::Funasr => {
+            AsrEngineType::OpenAIRealtimeTranscription => Box::new(OpenaiRealtimeAdapter::new()),
+            AsrEngineType::DeepgramStreaming => Box::new(DeepgramAdapter::new()),
+            AsrEngineType::LocalSenseVoice => {
                 let engine: Box<dyn StreamingAsrEngine> = Box::new(LocalAsrAdapter::new());
                 Box::new(LegacySessionAdapter::new(engine))
             }
@@ -235,7 +234,7 @@ mod tests {
 
     fn test_config() -> AsrConfig {
         AsrConfig {
-            engine_type: crate::asr::engine_trait::AsrEngineType::Deepgram,
+            engine_type: crate::asr::engine_trait::AsrEngineType::DeepgramStreaming,
             api_key: Some("test-key".into()),
             endpoint: None,
             language: "en".into(),

@@ -46,10 +46,14 @@ fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
 
 fn parse_engine_type(engine: &str) -> AsrEngineType {
     match engine {
-        "openai_whisper" => AsrEngineType::OpenaiWhisper,
-        "deepgram" => AsrEngineType::Deepgram,
-        "whisper_cpp" | "funasr" => AsrEngineType::Funasr, // Both map to local SenseVoice now
-        _ => AsrEngineType::OpenaiWhisper,
+        "openai_realtime" => AsrEngineType::OpenAIRealtimeTranscription,
+        "deepgram_streaming" => AsrEngineType::DeepgramStreaming,
+        "local_sense_voice" => AsrEngineType::LocalSenseVoice,
+        // Legacy aliases for backward compatibility
+        "openai_whisper" => AsrEngineType::OpenAIRealtimeTranscription,
+        "deepgram" => AsrEngineType::DeepgramStreaming,
+        "whisper_cpp" | "funasr" => AsrEngineType::LocalSenseVoice,
+        _ => AsrEngineType::OpenAIRealtimeTranscription,
     }
 }
 
@@ -124,12 +128,10 @@ pub async fn start_recording(
 
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
-    let is_local = matches!(engine_type, AsrEngineType::Funasr);
+    let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice);
     log::info!("[session={}] recording.config engine={} is_local={}", session_id, engine_name, is_local);
     if is_local {
         let local_engine = resources::ResourceEngine::SenseVoice;
-
-        // Check model files and build endpoint
         let model_check = {
             let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
             let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
@@ -532,7 +534,7 @@ pub fn switch_engine(
     log::info!("Switching engine to: {}", engine);
 
     let engine_type = parse_engine_type(&engine);
-    let is_local = matches!(engine_type, AsrEngineType::Funasr); // Only local engine now
+    let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice); // Only local engine now
 
     let mut result = serde_json::json!({
         "engine": engine,

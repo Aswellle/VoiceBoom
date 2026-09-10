@@ -256,7 +256,7 @@ mod tests {
 
     fn test_config() -> AsrConfig {
         AsrConfig {
-            engine_type: AsrEngineType::Deepgram,
+            engine_type: AsrEngineType::DeepgramStreaming,
             api_key: Some("test-key".into()),
             endpoint: None,
             language: "en".into(),

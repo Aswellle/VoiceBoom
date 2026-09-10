@@ -32,12 +32,15 @@ pub struct AsrConfig {
     pub sample_rate: u32,
 }
 
+/// ASR engine types. Phase 17: unified naming.
 #[derive(Debug, Clone, PartialEq)]
 pub enum AsrEngineType {
-    OpenaiWhisper,
-    Deepgram,
-    WhisperCpp,
-    Funasr,
+    /// OpenAI Realtime Transcription (cloud WebSocket)
+    OpenAIRealtimeTranscription,
+    /// Deepgram Streaming (cloud WebSocket)
+    DeepgramStreaming,
+    /// Local SenseVoice (sherpa-onnx, offline)
+    LocalSenseVoice,
 }
 
 /// Core ASR engine trait — all engines must implement this

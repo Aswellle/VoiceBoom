@@ -12,7 +12,7 @@ mod integration_tests {
 
     fn test_config() -> crate::asr::engine_trait::AsrConfig {
         crate::asr::engine_trait::AsrConfig {
-            engine_type: crate::asr::engine_trait::AsrEngineType::Deepgram,
+            engine_type: crate::asr::engine_trait::AsrEngineType::DeepgramStreaming,
             api_key: Some("test-key".into()),
             endpoint: None,
             language: "en".into(),
