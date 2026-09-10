@@ -182,9 +182,17 @@ pub async fn start_recording(
         guard.clone()
     };
     let asr_initialized = if let Some(ref mut asr) = asr_clone {
+        // Phase 11: Resolve API key from secure storage if not provided.
+        let resolved_api_key = match apiKey {
+            Some(k) if !k.is_empty() => Some(k),
+            _ => {
+                let store = crate::secure_keystore::platform_key_store();
+                store.retrieve("voiceboom-api-key").ok().flatten()
+            }
+        };
         let config = AsrConfig {
             engine_type: engine_type,
-            api_key: apiKey.clone(),
+            api_key: resolved_api_key,
             endpoint: resolved_endpoint.clone(),
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
             vad_sensitivity: vadSensitivity.unwrap_or(50),
@@ -781,24 +789,54 @@ pub async fn get_auto_start(app_handle: AppHandle) -> Result<bool, String> {
     manager.is_enabled().map_err(|e| format!("Failed to query autostart: {e}"))
 }
 
-/// Persist the cloud API key into the dedicated model_config table (with the
-/// encrypted flag set). Keeping it out of the generic settings table avoids
-/// exposing the key alongside plain-text preferences.
+/// Persist the cloud API key into OS secure storage.
+/// Phase 11: No longer stores plaintext in SQLite.
 #[tauri::command]
 pub fn save_api_key(
+    app_handle: AppHandle,
     state: State<'_, AppState>,
     apiKey: String,
 ) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let db = db.as_ref().ok_or("Database not initialized")?;
-    db.save_model_config("apiKey", &apiKey, true)
-        .map_err(|e| e.to_string())
+    if apiKey.is_empty() {
+        // Delete the key if empty.
+        let store = crate::secure_keystore::platform_key_store();
+        store.delete("voiceboom-api-key").map_err(|e| e.to_string())?;
+        // Also clean up legacy SQLite entry.
+        if let Ok(db) = state.db.lock() {
+            if let Some(ref db) = *db {
+                let _ = db.delete_model_config("apiKey");
+            }
+        }
+        return Ok(());
+    }
+    let store = crate::secure_keystore::platform_key_store();
+    store.store("voiceboom-api-key", &apiKey).map_err(|e| e.to_string())?;
+    log::info!("save_api_key: stored {} chars in OS secure storage", apiKey.len());
+    Ok(())
 }
 
-/// Retrieve the cloud API key from the model_config table.
+/// Retrieve the cloud API key from OS secure storage.
+/// Phase 11: Reads from secure store, not SQLite.
 #[tauri::command]
 pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    let db = db.as_ref().ok_or("Database not initialized")?;
-    db.get_model_config("apiKey").map_err(|e| e.to_string())
+    let store = crate::secure_keystore::platform_key_store();
+    let result = store.retrieve("voiceboom-api-key").map_err(|e| e.to_string())?;
+    if result.is_some() {
+        return Ok(result);
+    }
+    // Fallback: check legacy SQLite entry for migration.
+    if let Ok(db) = state.db.lock() {
+        if let Some(ref db) = *db {
+            if let Ok(Some(key)) = db.get_model_config("apiKey") {
+                // Migrate to secure storage.
+                let store = crate::secure_keystore::platform_key_store();
+                if store.store("voiceboom-api-key", &key).is_ok() {
+                    let _ = db.delete_model_config("apiKey");
+                    log::info!("get_api_key: migrated legacy key to secure storage");
+                }
+                return Ok(Some(key));
+            }
+        }
+    }
+    Ok(None)
 }

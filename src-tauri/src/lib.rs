@@ -1,4 +1,5 @@
 mod session;
+mod secure_keystore;
 
 pub use session::{RecordingSession, RecordingState, SessionHandle};
 

@@ -180,4 +180,11 @@ impl Database {
             .optional()
             .map_err(|e| e.into())
     }
+
+    /// Delete model configuration (for secure key migration).
+    pub fn delete_model_config(&self, key: &str) -> anyhow::Result<()> {
+        let conn = lock_conn(&self.conn);
+        conn.execute("DELETE FROM model_config WHERE key = ?1", [key])?;
+        Ok(())
+    }
 }
