@@ -1,7 +1,7 @@
 
 # 🎙️ VoiceBoom AI
 
-[![Tests](https://img.shields.io/badge/tests-117%20passing-brightgreen)](./src/test)
+[![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](./src/test)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-180%2B-EA5800?logo=rust)](https://www.rust-lang.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
@@ -19,13 +19,14 @@
 
 - 🎯 **直接注入输入框** — 转写文字自动出现在光标位置（微信/iOS 听写体验），非仅悬浮窗展示
 - ⚡ **实时流式识别** — 流式 ASR 边说边出字（延迟取决于引擎和网络）
-- 🎨 **毛玻璃悬浮窗** — Glassmorphism 设计，Framer Motion 动画，自动调高适配内容
+- 🎨 **系统 HUD 风格** — 低存在感设计，三态显示（Idle/Listening/Result），最新内容优先
 - 🔌 **可插拔 ASR 引擎** — 本地离线 SenseVoice（内置，开箱即用）/ OpenAI Realtime / Deepgram Streaming
 - ⌨️ **全局快捷键** — 按住说话，松开停止
 - 🔒 **注入安全** — Windows 延迟渲染技术：不泄露剪贴板历史、不破坏用户剪贴板、UIPI 自动降级
 - 🌐 **多语言支持** — 中/英/日/韩 自动检测与切换
-- 🧪 **双层测试** — Vitest 单元/组件测试 + tauri-driver 真实桌面 E2E
+- 🧪 **双层测试** — 124 Rust 测试 + 19 Vitest 前端测试
 - 🪶 **轻量级** — Tauri 2.0，Rust 后端无 Node.js 依赖
+- 🎛️ **灵活上屏策略** — 直接上屏 / 确认上屏 / 仅识别，可按场景配置
 
 ---
 
@@ -89,9 +90,20 @@ bun run coverage            # 覆盖率报告
 ```
 
 覆盖内容：
-- `useAppStore` — M8 重入守卫、设置持久化、maxChars 预算裁剪、toast 定时
+- `useAppStore` — 重入守卫、设置持久化、maxChars 预算裁剪、toast 定时、draft settings
 - `SegmentItem` — 渲染、无障碍语义（role/aria-label/键盘）、clipboard 复制 + textarea 降级
-- `FloatingWindow` — 控件渲染、录音状态切换、按内容高度自动调窗、滚动"回到最新" FAB
+- `FloatingWindow` — 控件渲染、录音状态切换、按内容高度自动调窗、最新内容优先显示
+
+### Rust 单元测试
+
+```bash
+cargo test --lib            # 124 个测试
+```
+
+覆盖内容：
+- 录制会话状态机、音频管线、ASR 适配器、聚合器、Flush 终结
+- 注入控制器、InjectionResult、session 绑定去重
+- 快捷键事务性注册、设置持久化、SQLite 操作
 
 ### 端到端测试（tauri-driver）
 
@@ -112,9 +124,9 @@ E2E 覆盖：应用启动、引擎标签、开始/停止按钮、设置按钮。
 VoiceBoom/
 ├── src/                        # React 19 前端 (TypeScript + Tailwind CSS)
 │   ├── components/
-│   │   ├── FloatingWindow/     # 悬浮窗核心组件（自动调高、滚动、复制）
-│   │   ├── Settings/           # 设置面板（7 个标签页）
-│   │   └── Waveform/           # 音频波形可视化
+│   │   ├── FloatingWindow/     # 悬浮窗核心组件（HUD 三态、最新优先、自动调高）
+│   │   ├── Settings/           # 设置面板（5 个任务导向区域）
+│   │   └── Waveform/           # 音频波形可视化（Canvas 渲染）
 │   ├── hooks/
 │   │   ├── useAsr.ts           # ASR 录音生命周期 + 注入调用
 │   │   └── useGlobalShortcut.ts # 全局快捷键推麦
@@ -125,8 +137,8 @@ VoiceBoom/
 │   │   ├── store.test.ts       # store 逻辑测试
 │   │   └── components.test.tsx # 组件渲染与交互测试
 │   ├── utils/                  # 工具函数
-│   ├── styles/                 # 全局样式 + glassmorphism 设计令牌
-│   ├── App.tsx                 # 根路由（按窗口标签分发）
+│   ├── styles/                 # 全局样式 + 语义化设计令牌
+│   ├── App.tsx                 # 根路由（按窗口标签分发）+ 快捷键错误 banner
 │   └── main.tsx                # React 19 入口 + ErrorBoundary
 ├── src-tauri/                  # Tauri 2.0 Rust 后端
 │   ├── src/
@@ -137,6 +149,7 @@ VoiceBoom/
 │   │   ├── audio/              # CPAL 音频采集 + 重采样
 │   │   ├── commands/           # Tauri 命令处理器（含 inject_text）
 │   │   ├── inject.rs           # 跨平台文本注入调度
+│   │   ├── injection/          # 注入控制器 + 适配器
 │   │   ├── shortcut/           # 全局快捷键（平台默认）
 │   │   ├── db/                 # SQLite（设置/历史/快捷键）
 │   │   ├── resources/          # ONNX 模型路径解析
@@ -191,9 +204,10 @@ VoiceBoom/
 
 ## 版本规划
 
-- **V1.0 (当前)** — 悬浮窗 + 本地离线 ASR + 全局快捷键 + 文本注入输入框 + 双层测试
-- **V1.5** — 多语言增强、历史记录、系统输入注入优化
-- **V2.0** — AI 润色模式、专业术语库、多设备同步
+- **V1.0 (当前)** — 悬浮窗 HUD + 本地离线 ASR + 全局快捷键 + 文本注入 + 双层测试 + 灵活上屏策略
+- **V1.1** — 自动标点、去口头禅、改口识别、个人词典、应用场景
+- **V1.5** — AI 润色模式、语气/格式模式、翻译
+- **V2.0** — 语音工作流平台、会议模式、插件 API
 
 ---
 
@@ -206,7 +220,3 @@ MIT License with Commercial Use Restriction — 详见 [LICENSE](./LICENSE)。
 ---
 
 *Built with ❤️ using Tauri, React, and Rust.*
-
----
-
-**[⬆ 返回顶部](#voiceboom-ai)**
