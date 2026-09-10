@@ -97,7 +97,7 @@ interface AppState {
   setSettingsOpen: (open: boolean) => void;
   windowPosition: { x: number; y: number };
   /// Whether the window position has been explicitly persisted. Avoids the
-  /// false-negative where (0, 50) is mistaken for "never saved".
+  // false-negative where (0, 50) is mistaken for "never saved".
   windowPositionPersisted: boolean;
   setWindowPosition: (pos: { x: number; y: number }) => void;
   /// Persist the current window position to SQLite (debounced by the caller).
@@ -121,11 +121,17 @@ interface AppState {
   toastMessage: string;
   showToast: (message: string) => void;
 
+  // Current recording session ID (Phase 9)
+  currentSessionId: string | null;
+  setCurrentSessionId: (id: string) => void;
 
+  // Injection state (Phase 9: frontend injection tracking)
+  injectionSessionId: string | null;
+  injectionUtteranceId: string | null;
 
   /// Inject a finalized ASR transcript into the currently focused input field.
-  /// Called by useAsr when a final result arrives.
-  injectFinalText: (text: string) => void;
+  /// Phase 9: Bound to session_id + utterance_id for dedupe.
+  injectFinalText: (params: { sessionId: string; utteranceId: string; text: string }) => void;
 
   // Recognition history (persisted in SQLite). Loaded on demand.
   // Toggle OS auto-start at boot (persists setting + registers with OS).
@@ -172,6 +178,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       state === 'recording' || state === 'starting' ? 'listening' : 'idle';
     set({ status: legacyStatus });
   },
+
+  // Current recording session ID (Phase 9)
+  currentSessionId: null,
+  setCurrentSessionId: (id) => set({ currentSessionId: id }),
+
+  // Injection state (Phase 9: frontend injection tracking)
+  injectionSessionId: null,
+  injectionUtteranceId: null,
 
   // Status (legacy)
   status: 'idle',
@@ -358,12 +372,17 @@ export const useAppStore = create<AppState>((set, get) => ({
       get().showToast('清空历史记录失败');
     }
   },
-  injectFinalText: (text) => {
+  injectFinalText: (params) => {
     const mode = get().settings.injectionMode;
-    // Fire-and-forget: injection runs async; errors surface as toasts.
-    invoke('inject_text', { text, mode })
-      .then(() => {
-        console.info(`injectFinalText: injected ${text.length} chars via '${mode}'`);
+    const { sessionId, utteranceId, text } = params;
+    // Phase 9: Pass session_id + utterance_id for dedupe and stale session protection.
+    invoke('inject_text', { sessionId, utteranceId, text, mode })
+      .then((result: unknown) => {
+        // Phase 9: Handle structured InjectionResult.
+        const injectionResult = result as { result?: string; message?: string } | null;
+        if (injectionResult?.message) {
+          console.info(`injectFinalText: ${injectionResult.message}`);
+        }
       })
       .catch((e) => {
         const msg = typeof e === 'string' ? e : '文本注入失败';

@@ -22,7 +22,7 @@ interface UseAsrReturn {
 }
 
 export function useAsr(): UseAsrReturn {
-  const { addSegment, updatePartial, sessionState } = useAppStore();
+  const { addSegment, updatePartial, sessionState, setCurrentSessionId } = useAppStore();
   const engine = useAppStore((s) => s.settings.engine);
   const language = useAppStore((s) => s.settings.language);
   const apiKey = useAppStore((s) => s.settings.apiKey);
@@ -31,9 +31,23 @@ export function useAsr(): UseAsrReturn {
   const vadSensitivity = useAppStore((s) => s.settings.vadSensitivity);
   const audioLevelInterval = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Phase 9: Track current session ID from backend.
+  const currentSessionIdRef = useRef<string | null>(null);
+
   // Phase 13: Derive isListening from authoritative sessionState.
   // Do NOT maintain independent isListening state — backend is single source of truth.
   const isListening = sessionState === 'starting' || sessionState === 'recording' || sessionState === 'stopping' || sessionState === 'finalizing';
+
+  // Phase 9: Listen for recording:started to capture session_id.
+  useEffect(() => {
+    const unlistenStarted = listen<{ session_id: string }>('recording:started', (event) => {
+      currentSessionIdRef.current = event.payload.session_id;
+      setCurrentSessionId(event.payload.session_id);
+    });
+    return () => {
+      unlistenStarted.then((f) => f());
+    };
+  }, [setCurrentSessionId]);
 
   // Listen for ASR results from Rust backend
   useEffect(() => {
@@ -48,8 +62,14 @@ export function useAsr(): UseAsrReturn {
           confidence,
           timestamp: Date.now(),
         });
-        // 语音转写完成后，自动注入到当前焦点输入框（如微信/iOS 听写）
-        useAppStore.getState().injectFinalText(text);
+        // Phase 9: Pass session_id + utterance_id for dedupe.
+        const sessionId = currentSessionIdRef.current || 'unknown';
+        const utteranceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+        useAppStore.getState().injectFinalText({
+          sessionId,
+          utteranceId,
+          text,
+        });
       } else {
         updatePartial(text);
       }
