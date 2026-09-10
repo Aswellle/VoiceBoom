@@ -221,9 +221,12 @@ describe("FloatingWindow", () => {
     render(<FloatingWindow />);
     const btn = screen.getByRole("button", { name: "说话" });
     await user.click(btn);
-    expect(useAppStore.getState().status).toBe("listening");
+    // Phase 13: startListening no longer sets status directly — backend emits recording:sessionState.
+    // Verify the click triggered start_recording invoke.
+    expect(useAppStore.getState().sessionState).toBe("idle"); // No backend event in test
+    // Verify button still shows "说话" since no recording:state event was received.
     expect(
-      screen.getByRole("button", { name: "停止" })
+      screen.getByRole("button", { name: "说话" })
     ).toBeInTheDocument();
   });
 

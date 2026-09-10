@@ -114,7 +114,7 @@ export function FloatingWindow() {
   const { startListening, stopListening } = useAsr();
   useGlobalShortcut(startListening, stopListening);
 
-  const status = useAppStore((s) => s.status);
+  const sessionState = useAppStore((s) => s.sessionState);
   const segments = useAppStore((s) => s.segments);
   const currentPartial = useAppStore((s) => s.currentPartial);
   const settings = useAppStore((s) => s.settings);
@@ -275,8 +275,9 @@ export function FloatingWindow() {
 
   // -----------------------------------------------------------------------
   // Derived state
-  // -----------------------------------------------------------------------
-  const isListening = status === 'listening';
+  // Phase 13: Derive isListening from authoritative sessionState.
+  // Do NOT combine status + audioFrames to infer recording state.
+  const isListening = sessionState === 'starting' || sessionState === 'recording' || sessionState === 'stopping' || sessionState === 'finalizing';
   const hasContent = segments.length > 0 || currentPartial;
 
   const statusText = isListening

@@ -1,10 +1,11 @@
 // useASR hook — manages ASR engine lifecycle and recognition flow
 // Connects to Tauri backend for audio capture and streaming recognition
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import { useAppStore, RecordingSessionState } from '../stores/useAppStore';
+
 /// ASR event payload from Rust backend
 interface AsrEvent {
   text: string;
@@ -21,31 +22,18 @@ interface UseAsrReturn {
 }
 
 export function useAsr(): UseAsrReturn {
-  const { setStatus, addSegment, updatePartial, setSessionState } = useAppStore();
+  const { addSegment, updatePartial, sessionState } = useAppStore();
   const engine = useAppStore((s) => s.settings.engine);
   const language = useAppStore((s) => s.settings.language);
   const apiKey = useAppStore((s) => s.settings.apiKey);
   const endpoint = useAppStore((s) => s.settings.endpoint);
   const selectedDevice = useAppStore((s) => s.settings.selectedDevice);
   const vadSensitivity = useAppStore((s) => s.settings.vadSensitivity);
-  const isListeningRef = useRef(false);
-  const [isListening, setIsListening] = useState(false);
   const audioLevelInterval = useRef<ReturnType<typeof setInterval> | null>(null);
-  // Phase 2: subscribe to authoritative session state from backend.
-  // The backend session state machine is the single source of truth;
-  // the frontend derives isListening from it rather than tracking independently.
-  useEffect(() => {
-    const unlistenState = listen<{ state: RecordingSessionState }>('recording:state', (event) => {
-      const { state } = event.payload;
-      setSessionState(state);
-      const active = state === 'starting' || state === 'recording' || state === 'stopping' || state === 'finalizing';
-      setIsListening(active);
-      isListeningRef.current = active;
-    });
-    return () => {
-      unlistenState.then((f) => f());
-    };
-  }, [setSessionState]);
+
+  // Phase 13: Derive isListening from authoritative sessionState.
+  // Do NOT maintain independent isListening state — backend is single source of truth.
+  const isListening = sessionState === 'starting' || sessionState === 'recording' || sessionState === 'stopping' || sessionState === 'finalizing';
 
   // Listen for ASR results from Rust backend
   useEffect(() => {
@@ -84,21 +72,24 @@ export function useAsr(): UseAsrReturn {
       useAppStore.getState().setAudioLevel(event.payload);
     });
 
+    // Phase 13: Listen for timeout events from backend flush.
+    const unlistenTimeout = listen<{ message: string }>('asr:timeout', (event) => {
+      console.warn('ASR Timeout:', event.payload.message);
+      useAppStore.getState().showToast(event.payload.message);
+    });
+
     return () => {
       unlistenResult.then((f) => f());
       unlistenError.then((f) => f());
       unlistenStatus.then((f) => f());
       unlistenLevel.then((f) => f());
+      unlistenTimeout.then((f) => f());
     };
   }, [addSegment, updatePartial]);
 
   // Start listening
   const startListening = useCallback(async () => {
-    if (isListeningRef.current) return;
-    isListeningRef.current = true;
-    setIsListening(true);
-    setStatus('listening');
-
+    // Phase 13: Don't track isListening independently — backend will emit recording:state.
     try {
       // Invoke Tauri command to start recording with ASR config
       await invoke('start_recording', {
@@ -113,28 +104,22 @@ export function useAsr(): UseAsrReturn {
       // Audio level comes from Rust via 'audio:level' events
     } catch (error) {
       console.error('Failed to start recording:', error);
-      isListeningRef.current = false;
-      setIsListening(false);
-      setStatus('idle');
       // Show the error to the user — a silent failure looks like nothing happened
       useAppStore.getState().showToast(
         typeof error === 'string' ? error : '启动语音识别失败，请检查设置'
       );
     }
-  }, [setStatus, engine, language, apiKey, endpoint, selectedDevice, vadSensitivity]);
+  }, [engine, language, apiKey, endpoint, selectedDevice, vadSensitivity]);
 
   // Stop listening
   const stopListening = useCallback(async () => {
-    if (!isListeningRef.current) return;
-    isListeningRef.current = false;
-    setIsListening(false);
+    // Phase 13: Don't track isListening independently — backend will emit recording:state.
 
     if (audioLevelInterval.current) {
       clearInterval(audioLevelInterval.current);
       audioLevelInterval.current = null;
     }
 
-    setStatus('result');
     useAppStore.getState().setAudioLevel(0);
 
     try {
@@ -142,14 +127,7 @@ export function useAsr(): UseAsrReturn {
     } catch (error) {
       console.error('Failed to stop recording:', error);
     }
-
-    // Return to idle after showing result
-    setTimeout(() => {
-      if (useAppStore.getState().status === 'result') {
-        setStatus('idle');
-      }
-    }, 2000);
-  }, [setStatus]);
+  }, []);
 
   return {
     startListening,

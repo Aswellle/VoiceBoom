@@ -11,9 +11,10 @@ export function Waveform() {
   // component re-renders only when one of them actually changes (not on every
   // store change, which an object selector would cause).
   const audioLevel = useAppStore((s) => s.audioLevel);
-  const status = useAppStore((s) => s.status);
+  const sessionState = useAppStore((s) => s.sessionState);
   const reduceMotion = useAppStore((s) => s.settings.reduceMotion);
-  const isListening = status === 'listening';
+  // Phase 13: Derive isListening from authoritative sessionState.
+  const isListening = sessionState === 'starting' || sessionState === 'recording' || sessionState === 'stopping' || sessionState === 'finalizing';
 
   return (
     <div className="flex items-center justify-center gap-[3px] h-8">
