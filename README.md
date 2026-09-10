@@ -1,7 +1,7 @@
 
 # 🎙️ VoiceBoom AI
 
-[![Tests](https://img.shields.io/badge/tests-19%20passing-brightgreen)](./src/test)
+[![Tests](https://img.shields.io/badge/tests-117%20passing-brightgreen)](./src/test)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
 [![Rust](https://img.shields.io/badge/Rust-180%2B-EA5800?logo=rust)](https://www.rust-lang.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
@@ -18,9 +18,9 @@
 ## 核心特性
 
 - 🎯 **直接注入输入框** — 转写文字自动出现在光标位置（微信/iOS 听写体验），非仅悬浮窗展示
-- ⚡ **实时流式识别** — 延迟 ≤ 500ms，边说边出字
+- ⚡ **实时流式识别** — 流式 ASR 边说边出字（延迟取决于引擎和网络）
 - 🎨 **毛玻璃悬浮窗** — Glassmorphism 设计，Framer Motion 动画，自动调高适配内容
-- 🔌 **可插拔 ASR 引擎** — 本地离线 SenseVoice（内置，开箱即用）/ OpenAI Whisper / Deepgram
+- 🔌 **可插拔 ASR 引擎** — 本地离线 SenseVoice（内置，开箱即用）/ OpenAI Realtime / Deepgram Streaming
 - ⌨️ **全局快捷键** — 按住说话，松开停止
 - 🔒 **注入安全** — Windows 延迟渲染技术：不泄露剪贴板历史、不破坏用户剪贴板、UIPI 自动降级
 - 🌐 **多语言支持** — 中/英/日/韩 自动检测与切换
