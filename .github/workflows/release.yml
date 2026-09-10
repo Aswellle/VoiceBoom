@@ -45,13 +45,14 @@ jobs:
 
             ## ✨ 亮点
 
-            - **全局即说即录** — 自定义全局热键（默认 Ctrl+Alt+Space），按下说话、松开识别，任何输入框即刻出字
-            - **毫秒级流式 ASR** — 采用 sherpa-onnx SenseVoice 离线模型，实时流式返回识别结果，所见即所得
-            - **智能文本注入** — 自动将转录文字注入当前焦点输入框（微信/浏览器/编辑器全适配），支持剪贴板与模拟输入双模式
-            - **玻璃态悬浮窗** — 极简毛玻璃 UI，实时波形可视化，专注不打扰
-            - **完全离线、开箱即用** — 内置 ~240MB SenseVoice 中文模型，零配置、零 API Key、零网络依赖
-            - **多引擎可切换** — 支持本地 SenseVoice / 云端 OpenAI Whisper / Deepgram，按需切换
-            - **跨平台** — Windows / macOS 原生适配（macOS 构建目标后续推出）
+            - **全局即说即录** — 自定义全局热键，按下说话、松开识别，任何输入框即刻出字
+            - **毫秒级流式 ASR** — 采用 sherpa-onnx SenseVoice 离线模型，实时流式返回识别结果
+            - **智能文本注入** — 自动将转录文字注入当前焦点输入框，支持剪贴板与模拟输入双模式
+            - **系统 HUD 风格** — 低存在感设计，三态显示（Idle/Listening/Result），最新内容优先
+            - **灵活上屏策略** — 直接上屏 / 确认上屏 / 仅识别，可按场景配置
+            - **完全离线、开箱即用** — 内置 SenseVoice 中文模型，零配置、零 API Key、零网络依赖
+            - **多引擎可切换** — 支持本地 SenseVoice / 云端 OpenAI Whisper / Deepgram
+            - **可配置暗色主题** — 语义化设计令牌，亮/暗主题一键切换
 
             ## 📥 下载
 
@@ -63,7 +64,7 @@ jobs:
             ## 🚀 快速开始
 
             1. 安装并启动 VoiceBoom
-            2. 首次启动自动加载本地 SenseVoice 模型（状态栏显示就绪）
+            2. 首次启动自动加载本地 SenseVoice 模型
             3. 在任意输入框按下全局热键说话
             4. 松开热键，文字自动注入当前焦点输入框
 
@@ -71,6 +72,33 @@ jobs:
 
             - Windows 10/11 64位
             - 麦克风输入设备
+
+            ---
+
+            ## What's New in v0.2.0
+
+            ### P0 — Critical Fixes
+
+            - **Input Policy**: New direct/confirm/recognize modes (safer defaults)
+            - **Partial Rendering**: Decoupled from window resize (only resize on finals)
+            - **HUD Simplification**: Three-state machine (Idle/Listening/Result), no diagnostic dots
+            - **Text Ordering**: Newest-first with opacity hierarchy
+            - **Settings Debounce**: draftSettings + persistSettings pattern
+            - **Dark Theme Tokens**: Semantic CSS custom properties
+
+            ### P1 — Systematic Optimization
+
+            - **Settings Restructuring**: 7 tabs → 5 task-oriented sections
+            - **Accessibility**: Toggle uses role="switch", aria-checked, focus-visible
+            - **Waveform**: Canvas-based rendering (was 12 Framer Motion nodes)
+            - **alert() → Inline Banner**: Shortcut errors now show inline
+            - **Removed Polling**: LocalResourcesTab removed (was 3s interval)
+
+            ### Documentation
+
+            - Added English README with language switcher
+            - Updated test counts (143 total: 124 Rust + 19 Vitest)
+            - Updated version roadmap (V1.1, V1.5, V2.0)
 
             ---
 

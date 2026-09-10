@@ -7,6 +7,8 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20non--commercial-important)](./LICENSE)
 
+**简体中文 | [English](./README.en.md)**
+
 **实时流式智能语音输入法** — Real-time Streaming Voice Input Method
 
 > 像微信语音转文本、iOS 键盘听写一样：按住热键说话，松手后文字**直接出现在光标所在的输入框**，无需手动复制粘贴。
