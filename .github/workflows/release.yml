@@ -75,5 +75,5 @@ jobs:
             ---
 
             > 构建时间：${{ github.run_id }} | 提交：${{ github.sha }}
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
