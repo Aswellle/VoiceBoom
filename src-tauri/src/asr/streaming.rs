@@ -4,8 +4,8 @@
 //! backward compatibility via `LegacySessionAdapter` for adapters that
 //! still implement the old `StreamingAsrEngine` trait.
 
+use super::adapters::{openai_realtime::OpenaiRealtimeAdapter, deepgram::DeepgramAdapter, local::LocalAsrAdapter};
 use super::engine_trait::{AsrConfig, AsrEngineType, AsrResult, StreamingAsrEngine};
-use super::adapters::{openai_whisper::OpenaiWhisperAdapter, deepgram::DeepgramAdapter, local::LocalAsrAdapter};
 use super::session::{AsrEvent, AsrSession, LegacySessionAdapter};
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -52,10 +52,7 @@ impl AsrManager {
         // Create the new session. Deepgram uses AsrSession directly;
         // legacy adapters are wrapped via LegacySessionAdapter.
         let mut session: Box<dyn AsrSession> = match config.engine_type {
-            AsrEngineType::OpenaiWhisper => {
-                let engine: Box<dyn StreamingAsrEngine> = Box::new(OpenaiWhisperAdapter::new());
-                Box::new(LegacySessionAdapter::new(engine))
-            }
+            AsrEngineType::OpenaiWhisper => Box::new(OpenaiRealtimeAdapter::new()),
             AsrEngineType::Deepgram => Box::new(DeepgramAdapter::new()),
             AsrEngineType::WhisperCpp | AsrEngineType::Funasr => {
                 let engine: Box<dyn StreamingAsrEngine> = Box::new(LocalAsrAdapter::new());
@@ -65,6 +62,8 @@ impl AsrManager {
 
         // Set config (Deepgram needs this before start()) and start.
         session.start(config.clone()).await?;
+        // P0 fix: store the session so it isn't dropped.
+        self.session = Some(Arc::new(Mutex::new(session)));
         self.config = Some(config);
         Ok(())
     }
@@ -130,8 +129,13 @@ impl AsrManager {
             s.finalize().await?;
         }
         // After finalize, drain remaining events and return the last final one.
+        // Use a bounded loop to avoid hanging if provider misbehaves.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(5);
         let mut last_final = None;
         loop {
+            if tokio::time::Instant::now() > deadline {
+                break;
+            }
             let event = self.receive_event().await?;
             match event {
                 Some(e) if e.is_final() => {
@@ -158,11 +162,13 @@ impl AsrManager {
     }
 
     /// Close the current session.
-    pub async fn close(&self) -> anyhow::Result<()> {
-        if let Some(session) = &self.session {
+    pub async fn close(&mut self) -> anyhow::Result<()> {
+        if let Some(session) = self.session.take() {
             let mut s = session.lock().await;
-            s.shutdown().await?;
+            let _ = s.shutdown().await;
         }
+        self.session = None;
+        self.config = None;
         Ok(())
     }
 
