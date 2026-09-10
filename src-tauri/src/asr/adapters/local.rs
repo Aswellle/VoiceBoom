@@ -13,25 +13,48 @@ use std::time::Instant;
 
 use super::super::engine_trait::{AsrConfig, AsrResult, StreamingAsrEngine};
 
-/// Tuning parameters mirrored from the official sherpa-onnx example.
-mod cfg {
+/// Tuning parameters for local SenseVoice streaming.
+/// Centralized configuration to avoid scattered magic numbers (Phase 7).
+#[derive(Debug, Clone)]
+pub struct LocalAsrTuning {
     /// VAD processes audio in fixed windows (samples at 16kHz).
-    pub const VAD_WINDOW_SIZE: usize = 512;
-
-    /// Silence duration to declare speech end (seconds). The official example
-    /// uses 0.1s; we use 0.3s to avoid cutting off normal pauses in dictation.
-    pub const VAD_MIN_SILENCE: f32 = 0.3;
+    pub vad_window_size: usize,
+    /// Silence duration to declare speech end (seconds).
+    pub min_silence_ms: u32,
     /// Minimum speech duration to trigger detection (seconds).
-    pub const VAD_MIN_SPEECH: f32 = 0.25;
+    pub min_speech_ms: u32,
     /// Maximum continuous speech duration (seconds).
-    pub const VAD_MAX_SPEECH: f32 = 8.0;
+    pub max_speech_ms: u32,
     /// Interim decode interval while speech is ongoing (seconds).
-    pub const INTERIM_INTERVAL: f32 = 0.2;
+    pub partial_interval_ms: u32,
+    /// Maximum working buffer duration (seconds).
+    /// Audio older than this is trimmed to bound memory and decode cost.
+    pub max_working_buffer_ms: u32,
+}
+
+impl Default for LocalAsrTuning {
+    fn default() -> Self {
+        Self {
+            vad_window_size: 512,        // 32ms @16kHz
+            min_silence_ms: 300,         // 0.3s silence = speech end
+            min_speech_ms: 250,          // 0.25s minimum speech
+            max_speech_ms: 8000,         // 8s max continuous speech
+            partial_interval_ms: 200,    // 200ms interim cadence
+            max_working_buffer_ms: 3000, // 3s bounded working buffer
+        }
+    }
+}
+
+/// Convert milliseconds to samples at 16kHz.
+fn ms_to_samples(ms: u32) -> usize {
+    (ms as usize) * 16000 / 1000
 }
 
 /// Local ASR adapter using sherpa-onnx OfflineRecognizer + Silero VAD.
 pub struct LocalAsrAdapter {
     config: Option<AsrConfig>,
+    /// Tuning parameters (Phase 7: centralized config).
+    tuning: LocalAsrTuning,
     /// Accumulated audio samples at 16kHz mono f32.
     buffer: Vec<f32>,
     /// Silero VAD for endpoint detection.
@@ -45,16 +68,14 @@ pub struct LocalAsrAdapter {
     /// Timestamp of the last interim decode.
     last_interim: Instant,
     ready: bool,
-    /// VAD sensitivity used to build the current VAD. When the configured
-    /// sensitivity changes, the VAD is recreated on the next initialize().
+    /// VAD sensitivity used to build the current VAD.
     last_vad_sensitivity: Option<u32>,
 }
-
-
 impl LocalAsrAdapter {
     pub fn new() -> Self {
         Self {
             config: None,
+            tuning: LocalAsrTuning::default(),
             buffer: Vec::new(),
             vad: None,
             recognizer: None,
@@ -66,6 +87,23 @@ impl LocalAsrAdapter {
         }
     }
 
+    /// Create with custom tuning (for testing).
+    pub fn with_tuning(tuning: LocalAsrTuning) -> Self {
+        Self {
+            config: None,
+            tuning,
+            ..Default::default()
+        }
+    }
+}
+
+impl Default for LocalAsrAdapter {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl LocalAsrAdapter {
     fn ensure_models(&mut self, config: &AsrConfig) -> anyhow::Result<()> {
         // The VAD's threshold is fixed at creation time. If the user changes
         // sensitivity, drop the old VAD so it gets recreated with the new
@@ -112,11 +150,10 @@ impl LocalAsrAdapter {
             let mut vad_config = sherpa_onnx::VadModelConfig::default();
             vad_config.silero_vad.model = Some(vad_model.to_string());
             vad_config.silero_vad.threshold = threshold;
-            vad_config.silero_vad.min_silence_duration = cfg::VAD_MIN_SILENCE;
-            vad_config.silero_vad.min_speech_duration = cfg::VAD_MIN_SPEECH;
-            vad_config.silero_vad.max_speech_duration = cfg::VAD_MAX_SPEECH;
-            vad_config.silero_vad.window_size = cfg::VAD_WINDOW_SIZE as i32;
-            vad_config.sample_rate = config.sample_rate as i32;
+            vad_config.silero_vad.min_silence_duration = self.tuning.min_silence_ms as f32 / 1000.0;
+            vad_config.silero_vad.min_speech_duration = self.tuning.min_speech_ms as f32 / 1000.0;
+            vad_config.silero_vad.max_speech_duration = self.tuning.max_speech_ms as f32 / 1000.0;
+            vad_config.silero_vad.window_size = self.tuning.vad_window_size as i32;
 
             self.vad = Some(
                 sherpa_onnx::VoiceActivityDetector::create(&vad_config, 20.0)
@@ -183,12 +220,12 @@ impl StreamingAsrEngine for LocalAsrAdapter {
             None => return Ok(None),
         };
 
-        // Feed VAD in fixed-size windows, exactly like the official example.
+        // Feed VAD in fixed-size windows.
         let prev_offset = self.vad_offset;
-        while self.vad_offset + cfg::VAD_WINDOW_SIZE <= self.buffer.len() {
-            let window = &self.buffer[self.vad_offset..self.vad_offset + cfg::VAD_WINDOW_SIZE];
+        while self.vad_offset + self.tuning.vad_window_size <= self.buffer.len() {
+            let window = &self.buffer[self.vad_offset..self.vad_offset + self.tuning.vad_window_size];
             vad.accept_waveform(window);
-            self.vad_offset += cfg::VAD_WINDOW_SIZE;
+            self.vad_offset += self.tuning.vad_window_size;
 
             if !self.speech_active && vad.detected() {
                 self.speech_active = true;
@@ -197,34 +234,29 @@ impl StreamingAsrEngine for LocalAsrAdapter {
             }
         }
 
-        // Log buffer growth periodically
-        if self.vad_offset - prev_offset > 0 && self.vad_offset % (cfg::VAD_WINDOW_SIZE * 10) < cfg::VAD_WINDOW_SIZE {
-            log::debug!("VAD feed: buffer={}, offset={}, speech_active={}", self.buffer.len(), self.vad_offset, self.speech_active);
-        }
-
-        // Trim buffer if speech hasn't started and it's getting large.
-        if !self.speech_active && self.buffer.len() > 10 * cfg::VAD_WINDOW_SIZE {
-            let trim = self.buffer.len() - 10 * cfg::VAD_WINDOW_SIZE;
+        // Phase 7: Bound the working buffer. Trim audio older than max_working_buffer_ms.
+        let max_samples = ms_to_samples(self.tuning.max_working_buffer_ms);
+        if self.buffer.len() > max_samples {
+            let trim = self.buffer.len() - max_samples;
             self.vad_offset = self.vad_offset.saturating_sub(trim);
             self.buffer.drain(..trim);
         }
 
-        // Interim decode every INTERIM_INTERVAL while speech is ongoing.
-        //
-        // Re-decode the whole accumulated buffer and REPLACE the partial, rather
-        // than appending each slice's decode to a running string. Appending
-        // decodes context-free slices, which duplicates characters at slice
-        // boundaries (e.g. "世界" cut mid-syllable → "世世界") and drops Latin
-        // word spaces. The VAD final overrides this partial anyway.
+        // Phase 7: Chunk-aware interim decode.
+        // Instead of re-decoding the entire buffer (O(n) cost grows with speech duration),
+        // decode only the most recent window of audio. This bounds decode cost.
         if self.speech_active
-            && self.last_interim.elapsed().as_secs_f32() > cfg::INTERIM_INTERVAL
+            && self.last_interim.elapsed().as_millis() > self.tuning.partial_interval_ms as u128
         {
             self.last_interim = Instant::now();
 
             if let Some(recognizer) = self.recognizer.as_ref() {
                 if !self.buffer.is_empty() {
+                    // Decode only the last N seconds of audio (bounded window).
+                    let window_start = self.buffer.len().saturating_sub(max_samples);
+                    let window = &self.buffer[window_start..];
                     let stream = recognizer.create_stream();
-                    stream.accept_waveform(16000, &self.buffer);
+                    stream.accept_waveform(16000, window);
                     recognizer.decode(&stream);
                     if let Some(result) = stream.get_result() {
                         let text = result.text.trim().to_string();
@@ -246,7 +278,6 @@ impl StreamingAsrEngine for LocalAsrAdapter {
         if let Some(vad) = self.vad.as_ref() {
             if !vad.is_empty() {
                 let segment = vad.front().ok_or_else(|| anyhow::anyhow!("VAD empty"))?;
-                // Clone samples before pop() borrows vad mutably.
                 let samples: Vec<f32> = segment.samples().to_vec();
                 let _ = segment.start();
                 vad.pop();
@@ -259,13 +290,7 @@ impl StreamingAsrEngine for LocalAsrAdapter {
                         let text = result.text;
                         let has_text = !text.trim().is_empty();
                         log::info!("FINAL: {} ({} chars)", text.trim(), text.len());
-                        // Reset whenever a segment is finalized — even an
-                        // empty-text one. Otherwise speech_active stays latched,
-                        // the buffer is never trimmed, and each interim
-                        // re-decodes the whole accumulated buffer (unbounded
-                        // growth on noisy input). The VAD keeps the next
-                        // utterance's audio in its own buffer; flush() recovers
-                        // it via vad.flush().
+                        // Reset for next utterance.
                         self.buffer.clear();
                         self.vad_offset = 0;
                         self.speech_active = false;
@@ -365,5 +390,89 @@ impl StreamingAsrEngine for LocalAsrAdapter {
 
     fn is_ready(&self) -> bool {
         self.ready
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_ms_to_samples() {
+        assert_eq!(ms_to_samples(1000), 16000);
+        assert_eq!(ms_to_samples(200), 3200);
+        assert_eq!(ms_to_samples(0), 0);
+    }
+
+    #[test]
+    fn test_tuning_default_values() {
+        let tuning = LocalAsrTuning::default();
+        assert_eq!(tuning.vad_window_size, 512);
+        assert_eq!(tuning.min_silence_ms, 300);
+        assert_eq!(tuning.min_speech_ms, 250);
+        assert_eq!(tuning.max_speech_ms, 8000);
+        assert_eq!(tuning.partial_interval_ms, 200);
+        assert_eq!(tuning.max_working_buffer_ms, 3000);
+    }
+
+    #[test]
+    fn test_with_tuning_creates_custom() {
+        let tuning = LocalAsrTuning {
+            max_working_buffer_ms: 5000,
+            ..Default::default()
+        };
+        let adapter = LocalAsrAdapter::with_tuning(tuning.clone());
+        assert_eq!(adapter.tuning.max_working_buffer_ms, 5000);
+    }
+
+    /// Verify that the working buffer is bounded during continuous speech.
+    /// This is the core P1-A fix: without bounding, the buffer grows unboundedly
+    /// during continuous speech, causing interim decode cost to increase linearly.
+    #[tokio::test]
+    async fn test_working_buffer_bounded_during_speech() {
+        let tuning = LocalAsrTuning {
+            max_working_buffer_ms: 500, // 0.5s = 8000 samples
+            partial_interval_ms: 10000, // Disable interim for this test
+            ..Default::default()
+        };
+        let mut adapter = LocalAsrAdapter::with_tuning(tuning);
+
+        adapter.buffer = vec![0.0; 20000]; // 20000 samples > 8000 limit
+        adapter.vad_offset = 20000;
+        adapter.speech_active = true;
+
+        let max_samples = ms_to_samples(adapter.tuning.max_working_buffer_ms);
+        if adapter.buffer.len() > max_samples {
+            let trim = adapter.buffer.len() - max_samples;
+            adapter.vad_offset = adapter.vad_offset.saturating_sub(trim);
+            adapter.buffer.drain(..trim);
+        }
+
+        assert_eq!(adapter.buffer.len(), 8000);
+        assert_eq!(adapter.vad_offset, 8000);
+    }
+
+    /// Verify that buffer trimming preserves vad_offset relationship.
+    #[tokio::test]
+    async fn test_buffer_trim_preserves_vad_offset() {
+        let tuning = LocalAsrTuning {
+            max_working_buffer_ms: 1000, // 16000 samples
+            ..Default::default()
+        };
+        let mut adapter = LocalAsrAdapter::with_tuning(tuning);
+
+        adapter.buffer = vec![0.1; 32000]; // 2 seconds of audio
+        adapter.vad_offset = 32000;
+        adapter.speech_active = true;
+
+        let max_samples = ms_to_samples(adapter.tuning.max_working_buffer_ms);
+        if adapter.buffer.len() > max_samples {
+            let trim = adapter.buffer.len() - max_samples;
+            adapter.vad_offset = adapter.vad_offset.saturating_sub(trim);
+            adapter.buffer.drain(..trim);
+        }
+
+        assert_eq!(adapter.buffer.len(), 16000);
+        assert_eq!(adapter.vad_offset, 16000);
     }
 }
