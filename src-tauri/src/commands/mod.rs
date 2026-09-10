@@ -744,21 +744,158 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
     Ok(())
 }
 
-/// Inject transcribed text into the currently focused input field.
+/// Inject transcribed text into the focused input field.
 ///
-/// `mode` selects the strategy: `"clipboard"` (default, win-text-inject on
-/// Windows) or `"typing"` (enigo keystroke simulation).
+/// Phase 4: Bound to session_id + utterance_id for dedupe and stale session protection.
 #[tauri::command]
-pub async fn inject_text(text: String, mode: Option<String>) -> Result<serde_json::Value, String> {
+pub async fn inject_text(
+    app_handle: AppHandle,
+    state: State<'_, AppState>,
+    session_id: String,
+    utterance_id: String,
+    text: String,
+    mode: Option<String>,
+) -> Result<serde_json::Value, String> {
     if text.is_empty() {
-        return Ok(serde_json::json!({ "result": "injected" }));
+        return Ok(serde_json::to_value(&crate::injection::InjectionResult::Injected {
+            method: crate::injection::InjectionMethod::ClipboardPaste,
+            verified: false,
+        })
+        .map_err(|e| format!("{e}"))?);
     }
+
     let mode = mode
         .and_then(|m| serde_json::from_str::<crate::inject::InjectionMode>(&format!("\"{m}\"")).ok())
         .unwrap_or_default();
-    log::info!("inject_text: {} chars, mode={:?}", text.len(), mode);
+
+    // Phase 4: Look up the session to get the captured target.
+    let target = {
+        let session = state.session.lock().map_err(|e| e.to_string())?;
+        session.target.clone()
+    };
+
+    let target = match target {
+        Some(t) => t,
+        None => {
+            // No captured target — fallback to foreground.
+            #[cfg(windows)]
+            {
+                use win_text_inject::Target;
+                match Target::foreground() {
+                    Ok(t) => crate::injection::InjectionTarget::new(t.hwnd, t.pid, t.exe, t.class),
+                    Err(e) => {
+                        return Ok(serde_json::to_value(
+                            &crate::injection::InjectionResult::Failed {
+                                reason: format!("No target: {e}"),
+                            },
+                        )
+                        .map_err(|e| format!("{e}"))?);
+                    }
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                return Ok(serde_json::to_value(
+                    &crate::injection::InjectionResult::TargetUnavailable,
+                )
+                .map_err(|e| format!("{e}"))?);
+            }
+        }
+    };
+
+    // Phase 3: Use InjectionController for dedupe and validation.
+    let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+
+    let request = controller.create_request(
+        &session_id,
+        &utterance_id,
+        &text,
+        target.clone(),
+        crate::injection::InjectionMode::Clipboard,
+    );
+
+    // Validate (dedupe + stale session).
+    let active_session_id = {
+        let session = state.session.lock().map_err(|e| e.to_string())?;
+        if session.is_active() {
+            Some(session.session_id.clone())
+        } else {
+            None
+        }
+    };
+
+    if let Err(result) = controller.validate(&request, active_session_id.as_deref()) {
+        return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+    }
+
+    // Mark in-flight.
+    controller.mark_in_flight(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+    drop(controller); // Release lock before async injection.
+
+    // Phase 5: Validate target.
+    let validation = {
+        let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+        controller.validate_target(&target)
+    };
+
+    match validation {
+        crate::injection::TargetValidation::Valid => {}
+        crate::injection::TargetValidation::FocusChanged => {
+            let result = crate::injection::InjectionResult::TargetChanged {
+                captured: target.exe.clone(),
+            };
+            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+        }
+        crate::injection::TargetValidation::WindowDestroyed
+        | crate::injection::TargetValidation::ProcessExited => {
+            let result = crate::injection::InjectionResult::Failed {
+                reason: "目标窗口已关闭".into(),
+            };
+            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+        }
+        crate::injection::TargetValidation::PermissionDenied => {
+            let result = crate::injection::InjectionResult::PermissionDenied {
+                reason: "权限不足".into(),
+            };
+            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+        }
+    }
+
+    // Execute injection.
     let result = crate::inject::inject(&text, &mode);
-    let json = serde_json::to_value(&result).map_err(|e| format!("{e}"))?;
+
+    // Map old result to new.
+    let injection_result = match result {
+        crate::inject::InjectionResult::Injected => crate::injection::InjectionResult::Injected {
+            method: crate::injection::InjectionMethod::ClipboardPaste,
+            verified: true,
+        },
+        crate::inject::InjectionResult::ClipboardFallback => crate::injection::InjectionResult::ClipboardFallback {
+            reason: "UIPI 阻止确认".into(),
+        },
+        crate::inject::InjectionResult::PermissionDenied => crate::injection::InjectionResult::PermissionDenied {
+            reason: "权限不足".into(),
+        },
+        crate::inject::InjectionResult::TargetUnavailable => crate::injection::InjectionResult::Failed {
+            reason: "目标不可用".into(),
+        },
+        crate::inject::InjectionResult::Failed { reason } => crate::injection::InjectionResult::Failed { reason },
+    };
+
+    // Mark completed.
+    {
+        let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+        match &injection_result {
+            r if r.is_success() => {
+                controller.mark_completed(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+            }
+            _ => {
+                controller.mark_failed(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+            }
+        }
+    }
+
+    let json = serde_json::to_value(&injection_result).map_err(|e| format!("{e}"))?;
     Ok(json)
 }
 

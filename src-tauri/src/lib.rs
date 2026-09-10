@@ -97,6 +97,8 @@ pub struct AppState {
     pub resource_manager: std::sync::Mutex<Option<ResourceManager>>,
     /// Single authoritative recording session state.
     pub session: SessionHandle,
+    /// Injection controller for dedupe and stale session protection.
+    pub injection_controller: std::sync::Mutex<crate::injection::InjectionController>,
 }
 
 impl AppState {
@@ -111,6 +113,9 @@ impl AppState {
                 "init".into(),
                 String::new(),
                 String::new(),
+            ),
+            injection_controller: std::sync::Mutex::new(
+                crate::injection::InjectionController::new(),
             ),
         }
     }
