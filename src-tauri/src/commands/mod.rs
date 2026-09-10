@@ -739,15 +739,17 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
 /// `mode` selects the strategy: `"clipboard"` (default, win-text-inject on
 /// Windows) or `"typing"` (enigo keystroke simulation).
 #[tauri::command]
-pub async fn inject_text(text: String, mode: Option<String>) -> Result<(), String> {
+pub async fn inject_text(text: String, mode: Option<String>) -> Result<serde_json::Value, String> {
     if text.is_empty() {
-        return Ok(());
+        return Ok(serde_json::json!({ "result": "injected" }));
     }
     let mode = mode
         .and_then(|m| serde_json::from_str::<crate::inject::InjectionMode>(&format!("\"{m}\"")).ok())
         .unwrap_or_default();
     log::info!("inject_text: {} chars, mode={:?}", text.len(), mode);
-    crate::inject::inject(&text, &mode)
+    let result = crate::inject::inject(&text, &mode);
+    let json = serde_json::to_value(&result).map_err(|e| format!("{e}"))?;
+    Ok(json)
 }
 
 /// Enable or disable automatic startup at system boot.

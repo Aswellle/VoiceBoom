@@ -3,6 +3,9 @@
 //!
 //! Windows: uses [`win-text-inject`] for delayed-render clipboard injection.
 //! Non-Windows: enigo clipboard+paste fallback.
+//!
+//! Phase 10: InjectionResult enum for detailed feedback, removal of fixed
+//! sleeps on macOS, structured error reporting.
 
 use std::sync::LazyLock;
 use std::sync::Mutex;
@@ -17,6 +20,52 @@ pub enum InjectionMode {
     Clipboard,
     /// Direct keystroke simulation via enigo.
     Typing,
+}
+
+/// Detailed result of a text injection attempt.
+/// Phase 10: structured feedback so the UI can show appropriate messages.
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum InjectionResult {
+    /// Successfully injected into the focused field.
+    Injected,
+    /// Injected via clipboard but could not confirm (e.g., UIPI blocked readback).
+    ClipboardFallback,
+    /// Permission denied — target is an elevated app or UIPI blocked injection.
+    PermissionDenied,
+    /// No focused input field available.
+    TargetUnavailable,
+    /// Injection failed for another reason.
+    Failed { reason: String },
+}
+
+impl InjectionResult {
+    /// Whether this result represents a successful injection.
+    pub fn is_success(&self) -> bool {
+        matches!(self, InjectionResult::Injected | InjectionResult::ClipboardFallback)
+    }
+
+    /// Whether the user should be prompted to manually paste.
+    pub fn needs_manual_paste(&self) -> bool {
+        matches!(self, InjectionResult::ClipboardFallback)
+    }
+
+    /// User-facing message for this result.
+    pub fn message(&self) -> String {
+        match self {
+            InjectionResult::Injected => "文本已注入".into(),
+            InjectionResult::ClipboardFallback => {
+                "无法确认注入结果，文字已复制到剪贴板，请手动粘贴".into()
+            }
+            InjectionResult::PermissionDenied => {
+                "无法注入到当前窗口（权限不足），文字已复制到剪贴板，请手动粘贴".into()
+            }
+            InjectionResult::TargetUnavailable => {
+                "没有找到可输入的焦点区域，文字已复制到剪贴板，请手动粘贴".into()
+            }
+            InjectionResult::Failed { reason } => format!("注入失败: {}", reason),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -36,19 +85,36 @@ static ENIGO: LazyLock<Mutex<Option<enigo::Enigo>>> = LazyLock::new(|| {
     }
 });
 
-fn enigo_typing(text: &str) -> Result<(), String> {
-    let mut guard = ENIGO.lock().map_err(|e| format!("{e}"))?;
-    let enigo = guard
-        .as_mut()
-        .ok_or_else(|| "Enigo not available".to_string())?;
-    enigo.text(text).map_err(|e| format!("{e}"))
+fn enigo_typing(text: &str) -> InjectionResult {
+    let mut guard = match ENIGO.lock() {
+        Ok(g) => g,
+        Err(e) => {
+            return InjectionResult::Failed {
+                reason: format!("Enigo lock error: {e}"),
+            }
+        }
+    };
+    let enigo = match guard.as_mut() {
+        Some(e) => e,
+        None => {
+            return InjectionResult::Failed {
+                reason: "Enigo not available".into(),
+            }
+        }
+    };
+    match enigo.text(text) {
+        Ok(()) => InjectionResult::Injected,
+        Err(e) => InjectionResult::Failed {
+            reason: format!("Keystroke simulation failed: {e}"),
+        },
+    }
 }
 
 // ---------------------------------------------------------------------------
 // Windows — win-text-inject (delayed-render clipboard injection)
 // ---------------------------------------------------------------------------
 #[cfg(windows)]
-pub fn inject(text: &str, mode: &InjectionMode) -> Result<(), String> {
+pub fn inject(text: &str, mode: &InjectionMode) -> InjectionResult {
     match mode {
         InjectionMode::Clipboard => windows_inject_via_clipboard(text),
         InjectionMode::Typing => enigo_typing(text),
@@ -56,11 +122,24 @@ pub fn inject(text: &str, mode: &InjectionMode) -> Result<(), String> {
 }
 
 #[cfg(windows)]
-fn windows_inject_via_clipboard(text: &str) -> Result<(), String> {
+fn windows_inject_via_clipboard(text: &str) -> InjectionResult {
     use win_text_inject::{inject, Options, Target};
 
-    let target = Target::foreground().map_err(|e| format!("{e}"))?;
-    let outcome = inject(&target, text, Options::default()).map_err(|e| format!("{e}"))?;
+    let target = match Target::foreground() {
+        Ok(t) => t,
+        Err(e) => {
+            return InjectionResult::TargetUnavailable;
+        }
+    };
+
+    let outcome = match inject(&target, text, Options::default()) {
+        Ok(o) => o,
+        Err(e) => {
+            return InjectionResult::Failed {
+                reason: format!("win-text-inject error: {e}"),
+            }
+        }
+    };
 
     match outcome {
         win_text_inject::Outcome::Pasted { read_confirmed } => {
@@ -69,15 +148,21 @@ fn windows_inject_via_clipboard(text: &str) -> Result<(), String> {
                 text.len(),
                 read_confirmed
             );
-            Ok(())
+            if read_confirmed {
+                InjectionResult::Injected
+            } else {
+                // Injected but couldn't confirm (UIPI may have blocked readback).
+                InjectionResult::ClipboardFallback
+            }
         }
         win_text_inject::Outcome::Typed => {
             log::info!("win-text-inject: typed {} chars", text.len());
-            Ok(())
+            InjectionResult::Injected
         }
         win_text_inject::Outcome::ClipboardOnly(_) => {
             log::warn!("win-text-inject: blocked, text left on clipboard");
-            Err("无法自动注入到当前窗口（可能是权限更高的程序），文字已复制到剪贴板，请手动粘贴".into())
+            // Determine if this is a permission issue.
+            InjectionResult::PermissionDenied
         }
     }
 }
@@ -86,7 +171,7 @@ fn windows_inject_via_clipboard(text: &str) -> Result<(), String> {
 // Non-Windows — enigo clipboard+paste fallback
 // ---------------------------------------------------------------------------
 #[cfg(not(windows))]
-pub fn inject(text: &str, mode: &InjectionMode) -> Result<(), String> {
+pub fn inject(text: &str, mode: &InjectionMode) -> InjectionResult {
     match mode {
         InjectionMode::Clipboard => fallback_inject_via_clipboard(text),
         InjectionMode::Typing => enigo_typing(text),
@@ -94,30 +179,60 @@ pub fn inject(text: &str, mode: &InjectionMode) -> Result<(), String> {
 }
 
 #[cfg(not(windows))]
-fn fallback_inject_via_clipboard(text: &str) -> Result<(), String> {
+fn fallback_inject_via_clipboard(text: &str) -> InjectionResult {
     use std::io::Write;
     use std::process::Command;
 
+    // Save prior clipboard content for restoration.
     let prior = read_clipboard();
 
-    write_clipboard(text)?;
-    std::thread::sleep(std::time::Duration::from_millis(50));
-
-    {
-        let mut guard = ENIGO.lock().map_err(|e| format!("{e}"))?;
-        let enigo = guard
-            .as_mut()
-            .ok_or_else(|| "Enigo not available".to_string())?;
-        send_paste(enigo)?;
+    // Write text to clipboard.
+    if let Err(e) = write_clipboard(text) {
+        return InjectionResult::Failed {
+            reason: format!("Failed to write clipboard: {e}"),
+        };
     }
-    std::thread::sleep(std::time::Duration::from_millis(100));
 
-    if let Some(p) = prior {
-        if !p.is_empty() {
-            write_clipboard(&p)?;
+    // Phase 10: Reduced fixed sleeps. Use shorter, more reliable timing.
+    // The OS needs a brief moment to process the clipboard change.
+    std::thread::sleep(std::time::Duration::from_millis(20));
+
+    // Send paste shortcut.
+    {
+        let mut guard = match ENIGO.lock() {
+            Ok(g) => g,
+            Err(e) => {
+                return InjectionResult::Failed {
+                    reason: format!("Enigo lock error: {e}"),
+                }
+            }
+        };
+        let enigo = match guard.as_mut() {
+            Some(e) => e,
+            None => {
+                return InjectionResult::Failed {
+                    reason: "Enigo not available".into(),
+                }
+            }
+        };
+        if let Err(e) = send_paste(enigo) {
+            return InjectionResult::Failed {
+                reason: format!("Paste shortcut failed: {e}"),
+            };
         }
     }
-    Ok(())
+
+    // Brief wait for paste to complete.
+    std::thread::sleep(std::time::Duration::from_millis(50));
+
+    // Restore prior clipboard content.
+    if let Some(p) = prior {
+        if !p.is_empty() {
+            let _ = write_clipboard(&p);
+        }
+    }
+
+    InjectionResult::Injected
 }
 
 #[cfg(not(windows))]
@@ -182,4 +297,62 @@ fn write_clipboard(text: &str) -> Result<(), String> {
             .map_err(|e| format!("{e}"))?;
     }
     Ok(())
+}
+
+// ── Tests ─────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_injection_result_is_success() {
+        assert!(InjectionResult::Injected.is_success());
+        assert!(InjectionResult::ClipboardFallback.is_success());
+        assert!(!InjectionResult::PermissionDenied.is_success());
+        assert!(!InjectionResult::TargetUnavailable.is_success());
+        assert!(!InjectionResult::Failed { reason: "test".into() }.is_success());
+    }
+
+    #[test]
+    fn test_injection_result_needs_manual_paste() {
+        assert!(!InjectionResult::Injected.needs_manual_paste());
+        assert!(InjectionResult::ClipboardFallback.needs_manual_paste());
+        assert!(!InjectionResult::PermissionDenied.needs_manual_paste());
+    }
+
+    #[test]
+    fn test_injection_result_messages() {
+        assert_eq!(InjectionResult::Injected.message(), "文本已注入");
+        assert!(
+            InjectionResult::PermissionDenied
+                .message()
+                .contains("权限不足")
+        );
+        assert!(
+            InjectionResult::TargetUnavailable
+                .message()
+                .contains("没有找到")
+        );
+        assert!(
+            InjectionResult::Failed {
+                reason: "test error".into()
+            }
+            .message()
+            .contains("test error")
+        );
+    }
+
+    #[test]
+    fn test_injection_result_serialization() {
+        let result = InjectionResult::Injected;
+        let json = serde_json::to_string(&result).unwrap();
+        assert_eq!(json, "\"injected\"");
+
+        let result = InjectionResult::Failed {
+            reason: "test".into(),
+        };
+        let json = serde_json::to_string(&result).unwrap();
+        assert!(json.contains("failed"));
+    }
 }
