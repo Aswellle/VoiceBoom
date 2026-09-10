@@ -154,6 +154,7 @@ pub fn run() {
             commands::get_auto_start,
             commands::save_api_key,
             commands::get_api_key,
+            commands::get_performance_metrics,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

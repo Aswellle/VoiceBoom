@@ -840,3 +840,28 @@ pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String>
     }
     Ok(None)
 }
+
+/// Get performance metrics for the audio pipeline.
+/// Phase 15: Latency instrumentation.
+#[tauri::command]
+pub fn get_performance_metrics(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    // Return latency metrics from the tracker.
+    // For now, return a placeholder — full integration requires
+    // shared LatencyTracker state.
+    Ok(serde_json::json!({
+        "status": "not_fully_integrated",
+        "message": "Latency tracking is available via LatencyTracker in asr::latency. Full integration requires shared state in AppState.",
+        "pipeline_stages": [
+            "t0_capture",
+            "t1_enqueue",
+            "t2_dequeue",
+            "t3_provider_send",
+            "t4_provider_partial",
+            "t5_frontend_event",
+            "t6_injection_start",
+            "t7_injection_complete"
+        ]
+    }))
+}
