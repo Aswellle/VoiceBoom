@@ -3,10 +3,16 @@
 //! Architecture Lock D: Provider event 必须先映射到统一 AsrEvent。
 //! Architecture Lock J: 每个后台任务必须可取消、可结束、可观察。
 //!
-//! This module replaces the old `StreamingAsrEngine` trait with a session-oriented
-//! model where each recording is an `AsrSession` that produces normalized `AsrEvent`s.
+//! This module defines the new session-oriented ASR abstraction:
+//! - `AsrEvent`: normalized event model (Partial, SegmentFinal, UtteranceFinal, Error)
+//! - `AsrSession`: session-oriented trait replacing `StreamingAsrEngine`
+//! - `FakeAsrSession`: configurable test provider
+//!
+//! Legacy types (`StreamingAsrEngine`, `AsrResult`, `AsrConfig`, `AsrEngineType`)
+//! are re-exported from `engine_trait` for backward compatibility.
 
 use async_trait::async_trait;
+use super::engine_trait::{AsrConfig, AsrEngineType, AsrResult, StreamingAsrEngine};
 
 // ── Normalized events ─────────────────────────────────────────────────
 
@@ -61,32 +67,6 @@ impl AsrEvent {
     }
 }
 
-// ── Session configuration ──────────────────────────────────────────────
-
-/// Configuration for an ASR session.
-#[derive(Debug, Clone)]
-pub struct AsrConfig {
-    /// Engine type identifier
-    pub engine_type: AsrEngineType,
-    /// API key for cloud engines
-    pub api_key: Option<String>,
-    /// API endpoint URL
-    pub endpoint: Option<String>,
-    pub language: String,
-    /// VAD sensitivity (0-100). Higher = more sensitive to speech onset.
-    pub vad_sensitivity: u32,
-    /// Sample rate of input audio
-    pub sample_rate: u32,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub enum AsrEngineType {
-    OpenaiWhisper,
-    Deepgram,
-    WhisperCpp,
-    Funasr,
-}
-
 // ── Session trait ──────────────────────────────────────────────────────
 
 /// A session-oriented ASR interface.
@@ -96,8 +76,8 @@ pub enum AsrEngineType {
 /// the session is complete and cannot be reused.
 #[async_trait]
 pub trait AsrSession: Send + Sync {
-    /// Start the session (establish connection, send initial config).
-    async fn start(&mut self) -> anyhow::Result<()>;
+    /// Start the session with the given configuration.
+    async fn start(&mut self, config: AsrConfig) -> anyhow::Result<()>;
 
     /// Push an audio frame into the session.
     async fn push_audio(&mut self, frame: &[f32]) -> anyhow::Result<()>;
@@ -111,7 +91,6 @@ pub trait AsrSession: Send + Sync {
 
     /// Shut down the session and release all resources.
     async fn shutdown(&mut self) -> anyhow::Result<()>;
-
     /// Get the session/engine name.
     fn name(&self) -> &str;
 
@@ -124,26 +103,6 @@ pub trait AsrSession: Send + Sync {
 /// The old `StreamingAsrEngine` / `AsrResult` types are preserved for backward
 /// compatibility during the migration. New code should use `AsrSession` / `AsrEvent`.
 
-/// Legacy recognition result (deprecated, use AsrEvent).
-#[derive(Debug, Clone, serde::Serialize)]
-pub struct AsrResult {
-    pub text: String,
-    pub is_final: bool,
-    pub language: Option<String>,
-    pub confidence: Option<f64>,
-}
-
-/// Legacy engine trait (deprecated, use AsrSession).
-#[async_trait]
-pub trait StreamingAsrEngine: Send + Sync {
-    async fn initialize(&mut self, config: AsrConfig) -> anyhow::Result<()>;
-    async fn send_audio(&mut self, audio_data: &[f32]) -> anyhow::Result<()>;
-    async fn receive_result(&mut self) -> anyhow::Result<Option<AsrResult>>;
-    async fn flush(&mut self) -> anyhow::Result<Option<AsrResult>>;
-    async fn close(&mut self) -> anyhow::Result<()>;
-    fn name(&self) -> &str;
-    fn is_ready(&self) -> bool;
-}
 
 /// Adapter: wraps a legacy `StreamingAsrEngine` as an `AsrSession`.
 /// This allows gradual migration — old adapters keep working while new ones
@@ -160,10 +119,9 @@ impl LegacySessionAdapter {
 
 #[async_trait]
 impl AsrSession for LegacySessionAdapter {
-    async fn start(&mut self) -> anyhow::Result<()> {
-        // Legacy engines are initialized by AsrManager before start().
-        // This is a no-op for legacy adapters.
-        Ok(())
+    async fn start(&mut self, config: AsrConfig) -> anyhow::Result<()> {
+        // Legacy engines use initialize() before start().
+        self.engine.initialize(config).await
     }
 
     async fn push_audio(&mut self, frame: &[f32]) -> anyhow::Result<()> {
@@ -246,7 +204,7 @@ impl FakeAsrSession {
 
 #[async_trait]
 impl AsrSession for FakeAsrSession {
-    async fn start(&mut self) -> anyhow::Result<()> {
+    async fn start(&mut self, _config: AsrConfig) -> anyhow::Result<()> {
         self.ready = true;
         Ok(())
     }
@@ -295,6 +253,17 @@ impl AsrSession for FakeAsrSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_config() -> AsrConfig {
+        AsrConfig {
+            engine_type: AsrEngineType::Deepgram,
+            api_key: Some("test-key".into()),
+            endpoint: None,
+            language: "en".into(),
+            vad_sensitivity: 50,
+            sample_rate: 16000,
+        }
+    }
 
     #[test]
     fn test_asr_event_is_final() {
@@ -373,7 +342,7 @@ mod tests {
         ];
         let mut session = FakeAsrSession::new("fake", events);
         assert!(!session.is_ready());
-        session.start().await.unwrap();
+        session.start(test_config()).await.unwrap();
         assert!(session.is_ready());
 
         // Push some audio
@@ -403,7 +372,7 @@ mod tests {
     async fn test_fake_session_failure() {
         let mut session = FakeAsrSession::new("fake", vec![])
             .fail_after_pushes(3);
-        session.start().await.unwrap();
+        session.start(test_config()).await.unwrap();
 
         session.push_audio(&[0.0; 100]).await.unwrap();
         session.push_audio(&[0.0; 100]).await.unwrap();
@@ -433,7 +402,7 @@ mod tests {
             index: 0,
         });
         let mut adapter = LegacySessionAdapter::new(legacy);
-        adapter.start().await.unwrap();
+        adapter.start(test_config()).await.unwrap();
 
         let e1 = adapter.next_event().await.unwrap().unwrap();
         assert!(matches!(e1, AsrEvent::Partial { ref text, .. } if text == "partial"));
