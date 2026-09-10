@@ -1,6 +1,6 @@
 [package]
 name = "voiceboom"
-version = "0.1.0"
+version = "0.2.0"
 description = "VoiceBoom AI — Real-time streaming voice input method"
 authors = ["VoiceBoom Team"]
 edition = "2021"
