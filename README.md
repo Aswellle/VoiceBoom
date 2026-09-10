@@ -43,7 +43,6 @@
 | 文本注入 | win-text-inject (Windows) / enigo (跨平台) |
 | 数据库 | SQLite (rusqlite) |
 
-> **文本注入 crate 已源码内联到 `src-tauri/vendor/`，无外部 crates.io 依赖。**
 
 ---
 
