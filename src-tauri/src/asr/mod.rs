@@ -7,6 +7,8 @@ pub mod streaming;
 
 #[cfg(test)]
 mod integration_tests;
+#[cfg(test)]
+mod failure_tests;
 
 // Re-export the new session-oriented types as the primary API.
 pub use session::{AsrEvent, AsrSession, FakeAsrSession};
