@@ -84,7 +84,9 @@ fn parse_deepgram_event(json: &serde_json::Value) -> Option<DeepgramEvent> {
                 .unwrap_or("unknown error")
                 .to_string(),
         }),
-        Some("Close") | Some("Metadata") => Some(DeepgramEvent::Closed),
+        Some("Close") => Some(DeepgramEvent::Closed),
+        // Metadata can arrive mid-stream (e.g., with request_id) — don't treat as close.
+        Some("Metadata") => None,
         _ => None,
     }
 }
@@ -134,8 +136,9 @@ impl DeepgramAdapter {
         };
 
         // Deepgram Live Streaming parameters per current protocol.
+        // endpointing is in milliseconds (integer), not boolean.
         let mut url = format!(
-            "{}?model=nova-3&encoding=linear16&sample_rate={}&channels=1&interim_results=true&endpointing=true&utterance_end_ms=1000&vad_events=true&smart_format=true",
+            "{}?model=nova-3&encoding=linear16&sample_rate={}&channels=1&interim_results=true&endpointing=800&utterance_end_ms=1000&vad_events=true&smart_format=true",
             endpoint, config.sample_rate
         );
         if !lang.is_empty() {
@@ -271,9 +274,10 @@ impl AsrSession for DeepgramAdapter {
                             _ => {}
                         }
                     }
-                    // Keepalive ping.
+                    // Keepalive: Deepgram requires text JSON frame, NOT Ping control frame.
                     _ = ping_interval.tick() => {
-                        if ws_sink.send(Message::Ping(vec![])).await.is_err() {
+                        let keepalive = serde_json::json!({"type": "KeepAlive"});
+                        if ws_sink.send(Message::Text(keepalive.to_string())).await.is_err() {
                             break;
                         }
                     }
@@ -498,12 +502,26 @@ mod tests {
     }
 
     #[test]
-    fn test_parse_metadata_is_closed() {
+    fn test_parse_metadata_is_not_closed() {
+        // Metadata can arrive mid-stream (e.g., with request_id) — must NOT close connection.
         let json = serde_json::json!({ "type": "Metadata", "request_id": "abc" });
-        assert!(matches!(
-            parse_deepgram_event(&json),
-            Some(DeepgramEvent::Closed)
-        ));
+        assert!(parse_deepgram_event(&json).is_none());
+    }
+
+    #[test]
+    fn test_build_url_endpointing_is_integer() {
+        let adapter = DeepgramAdapter::new();
+        let config = AsrConfig {
+            engine_type: crate::asr::AsrEngineType::Deepgram,
+            api_key: None,
+            endpoint: None,
+            language: "en".into(),
+            vad_sensitivity: 50,
+            sample_rate: 16000,
+        };
+        let url = adapter.build_url(&config);
+        assert!(url.contains("endpointing=800"));
+        assert!(!url.contains("endpointing=true"));
     }
 
     #[test]
@@ -538,7 +556,7 @@ mod tests {
         assert!(url.contains("sample_rate=16000"));
         assert!(url.contains("channels=1"));
         assert!(url.contains("interim_results=true"));
-        assert!(url.contains("endpointing=true"));
+        assert!(url.contains("endpointing=800"));
         assert!(url.contains("vad_events=true"));
         assert!(url.contains("language=en"));
         // Key must NOT be in URL.
