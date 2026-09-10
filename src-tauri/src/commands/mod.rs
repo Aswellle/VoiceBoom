@@ -1,11 +1,23 @@
-// Tauri command handlers — bridge between frontend and Rust backend
-
 use crate::AppState;
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::resources;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+static SESSION_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+/// Generate a unique, human-sortable session ID.
+/// Format: `{unix_ms}-{counter}` (e.g. `1726000000000-42`).
+fn generate_session_id() -> String {
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let counter = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
+    format!("{}-{}", ts, counter)
+}
+
+// Tauri command handlers — bridge between frontend and Rust backend
 /// RAII claim on the "starting a recording" critical section.
 /// Acquired atomically at the top of start_recording and released on Drop,
 /// which covers every early return in the start sequence.
@@ -70,7 +82,8 @@ pub async fn start_recording(
     device: Option<String>,
     vadSensitivity: Option<u32>,
 ) -> Result<(), String> {
-    log::info!("Starting recording...");
+    let session_id = generate_session_id();
+    log::info!("[session={}] recording.start", session_id);
 
     // Guard: prevent double-start using an atomic claim.
     // The claim is held for the whole start sequence and released on any early
@@ -109,8 +122,9 @@ pub async fn start_recording(
 
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
+    let engine_name = engine.clone().unwrap_or_else(|| "openai_whisper".to_string());
     let is_local = matches!(engine_type, AsrEngineType::Funasr);
-    log::info!("start_recording: engine={:?}, is_local={}, endpoint={:?}", engine_type, is_local, resolved_endpoint);
+    log::info!("[session={}] recording.config engine={} is_local={}", session_id, engine_name, is_local);
     if is_local {
         let local_engine = resources::ResourceEngine::SenseVoice;
 
@@ -172,10 +186,10 @@ pub async fn start_recording(
             vad_sensitivity: vadSensitivity.unwrap_or(50),
             sample_rate: 16000,
         };
-        log::info!("Initializing ASR with endpoint={:?}", resolved_endpoint);
+        log::info!("[session={}] asr.initialize engine={}", session_id, engine_name);
         match asr.initialize(config).await {
             Ok(()) => {
-                log::info!("ASR initialized successfully");
+                log::info!("[session={}] asr.ready", session_id);
                 true
             }
             Err(e) => {
@@ -226,6 +240,7 @@ pub async fn start_recording(
         let guard = state.asr_manager.lock().map_err(|e| e.to_string())?;
         guard.clone()
     };
+    let session_id = session_id;
     let app_handle_clone = app_handle.clone();
 
     // Mark bridge as active before spawning. The Arc handle is cloned into the
@@ -238,10 +253,11 @@ pub async fn start_recording(
     let mut frame_count: u64 = 0;
     let mut last_heartbeat = std::time::Instant::now();
     let mut had_partial: bool = false; // Track if any partial result was emitted
-
+    let session_id_clone = session_id.clone();
     tokio::spawn(async move {
         // Ensure bridge_active is cleared when task exits (success or panic)
         let _guard = BridgeActiveGuard { flag: bridge_flag };
+        log::info!("[session={}] bridge.start frames=0", session_id_clone);
 
         loop {
             match audio_rx.recv().await {
@@ -286,8 +302,7 @@ pub async fn start_recording(
                 }
                 None => {
                     // Channel closed, audio capture stopped — flush for any
-                    // trailing audio the adapter hadn't finalized yet.
-                    log::info!("Audio channel closed after {} frames, had_partial={}", frame_count, had_partial);
+                    log::info!("[session={}] recording.flush frames={} had_partial={}", session_id_clone, frame_count, had_partial);
                     if let Some(ref asr) = asr_for_bridge {
                         match asr.flush().await {
                             Ok(Some(result)) => {
@@ -321,8 +336,10 @@ pub async fn start_recording(
         }
     });
 
-    // Emit event to frontend
-    let _ = app_handle.emit("recording:started", ());
+    // Emit event to frontend with session_id for end-to-end tracing.
+    let _ = app_handle.emit("recording:started", serde_json::json!({
+        "session_id": session_id,
+    }));
     Ok(())
 }
 
@@ -332,8 +349,7 @@ pub async fn stop_recording(
     app_handle: AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
-    log::info!("Stopping recording...");
-
+    log::info!("recording.stop requested");
     if let Some(ref mut audio) = *state.audio_capture.lock().map_err(|e| e.to_string())? {
         audio.stop_recording();
     }
