@@ -2,11 +2,16 @@
 // Captures PCM audio from the default microphone and resamples to 16kHz mono.
 //
 // Since cpal::Stream is not Send, we use a dedicated thread approach:
-// audio samples are sent through a tokio channel to the ASR engine.
+// audio samples are sent through a bounded tokio channel to the ASR engine.
+//
+// Phase 3: bounded pipeline — the channel has a fixed capacity derived from
+// the latency budget. When full, the oldest frame is dropped (real-time
+// priority: stale audio is worse than higher latency).
 
+use super::pipeline::{bounded_audio_channel, AudioFrame};
 use cpal::traits::{DeviceTrait, HostTrait, StreamTrait};
 use cpal::SampleFormat;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::Arc;
 
 /// Target sample rate for the ASR engine (SenseVoice expects 16kHz).
@@ -17,7 +22,9 @@ pub struct AudioCapture {
     is_recording: Arc<AtomicBool>,
     thread_handle: Option<std::thread::JoinHandle<()>>,
     cmd_tx: Option<std::sync::mpsc::Sender<bool>>,
-    audio_tx: Option<tokio::sync::mpsc::UnboundedSender<Vec<f32>>>,
+    audio_tx: Option<tokio::sync::mpsc::Sender<AudioFrame>>,
+    /// Monotonic sequence counter for AudioFrame.
+    sequence: Arc<AtomicU64>,
 }
 
 impl AudioCapture {
@@ -27,6 +34,7 @@ impl AudioCapture {
             thread_handle: None,
             cmd_tx: None,
             audio_tx: None,
+            sequence: Arc::new(AtomicU64::new(0)),
         }
     }
 
@@ -42,7 +50,7 @@ impl AudioCapture {
     pub fn start_recording(
         &mut self,
         device_name: Option<&str>,
-    ) -> anyhow::Result<tokio::sync::mpsc::UnboundedReceiver<Vec<f32>>> {
+    ) -> anyhow::Result<tokio::sync::mpsc::Receiver<AudioFrame>> {
         if self.is_recording.load(Ordering::SeqCst) {
             anyhow::bail!("Already recording");
         }
@@ -54,8 +62,8 @@ impl AudioCapture {
         let (cmd_tx, cmd_rx) = std::sync::mpsc::channel::<bool>();
         self.cmd_tx = Some(cmd_tx);
 
-        // Channel for sending PCM samples to ASR
-        let (audio_tx, audio_rx) = tokio::sync::mpsc::unbounded_channel::<Vec<f32>>();
+        // Phase 3: bounded audio channel — capacity derived from latency budget.
+        let (audio_tx, audio_rx) = bounded_audio_channel();
         self.audio_tx = Some(audio_tx.clone());
 
         // P0-C fix: startup confirmation channel. The thread sends true after
@@ -63,7 +71,7 @@ impl AudioCapture {
         let (startup_tx, startup_rx) = std::sync::mpsc::channel::<bool>();
 
         let is_recording = self.is_recording.clone();
-
+        let sequence = self.sequence.clone();
         self.thread_handle = Some(std::thread::spawn(move || {
             let host = cpal::default_host();
             // Pick the requested device by name, or fall back to the default.
@@ -115,7 +123,30 @@ impl AudioCapture {
 
             let is_recording_cb = is_recording.clone();
             let audio_tx_cb = audio_tx.clone();
+            let sequence_cb = sequence.clone();
 
+            // Phase 3: send an AudioFrame with sequence number. The bounded
+            // channel has limited capacity; if full, drop the incoming frame
+            // (newest-drop, real-time priority — bounds memory, never blocks
+            // the CPAL callback).
+            let mut send_frame = move |samples: Vec<f32>| {
+                let seq = sequence_cb.fetch_add(1, Ordering::SeqCst);
+                let frame = AudioFrame {
+                    sequence: seq,
+                    timestamp: std::time::Instant::now(),
+                    samples,
+                };
+                if let Err(e) = audio_tx_cb.try_send(frame) {
+                    match e {
+                        tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                            log::debug!("audio queue full, dropping incoming frame #{}", seq);
+                        }
+                        tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                            // Receiver dropped — capture is being stopped.
+                        }
+                    }
+                }
+            };
             let err_fn = |err| eprintln!("Audio stream error: {:?}", err);
 
             // Resample ratio: input_sr / target_sr
@@ -138,7 +169,7 @@ impl AudioCapture {
                             // Resample to target rate using linear interpolation
                             let resampled =
                                 resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            let _ = audio_tx_cb.send(resampled);
+                            send_frame(resampled);
                         },
                         err_fn,
                         None,
@@ -161,7 +192,7 @@ impl AudioCapture {
                                 .collect();
                             let resampled =
                                 resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            let _ = audio_tx_cb.send(resampled);
+                            send_frame(resampled);
                         },
                         err_fn,
                         None,
@@ -184,7 +215,7 @@ impl AudioCapture {
                                 .collect();
                             let resampled =
                                 resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            let _ = audio_tx_cb.send(resampled);
+                            send_frame(resampled);
                         },
                         err_fn,
                         None,
