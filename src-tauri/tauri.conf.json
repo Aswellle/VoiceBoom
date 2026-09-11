@@ -65,7 +65,7 @@
     "shortDescription": "Private, low-latency AI voice input for your desktop.",
 
     "resources": [
-      "resources/runtime/placeholder.bin"
+      "resources/runtime/.gitkeep"
     ],
 
     "createUpdaterArtifacts": true,

@@ -287,6 +287,9 @@ function AITab() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
   const showToast = useAppStore((s) => s.showToast);
+  const providers = useAppStore((s) => s.providers);
+  const loadProviders = useAppStore((s) => s.loadProviders);
+  const resolveProvider = useAppStore((s) => s.resolveProvider);
   const [engineStatus, setEngineStatus] = useState<Record<string, any>>({});
 
   const currentEngine = ENGINES.find((e) => e.id === settings.engine) || ENGINES[0];
@@ -318,7 +321,17 @@ function AITab() {
         setEngineStatus((prev) => ({ ...prev, [settings.engine]: status }));
       })
       .catch(() => {});
+    loadProviders();
   }, []);
+
+  const handleModeChange = async (mode: 'automatic' | 'offline' | 'cloud') => {
+    try {
+      await resolveProvider(mode, true);
+      showToast(`语音引擎已切换为：${mode === 'automatic' ? '自动' : mode === 'offline' ? '离线' : '云端'}`);
+    } catch (e) {
+      console.error('handleModeChange failed:', e);
+    }
+  };
 
   return (
     <div className="flex flex-col gap-5">
@@ -356,6 +369,38 @@ function AITab() {
           ))}
         </div>
       </div>
+
+        {/* Voice Engine Mode (Phase 3: auto-fallback) */}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm text-gray-600 font-medium">语音引擎模式</label>
+          <div className="grid grid-cols-3 gap-2">
+            {([
+              { id: 'automatic', label: '自动', desc: '优先本地，智能回退' },
+              { id: 'offline', label: '离线', desc: '仅本地引擎' },
+              { id: 'cloud', label: '云端', desc: '使用云端 ASR' },
+            ] as const).map((mode) => (
+              <button
+                key={mode.id}
+                onClick={() => handleModeChange(mode.id)}
+                className="text-left p-2 rounded-lg border-2 transition-all"
+                style={{
+                  borderColor: 'var(--border-subtle)',
+                  background: 'var(--surface-base)',
+                }}
+              >
+                <span className="text-xs font-medium" style={{ color: 'var(--text-primary)' }}>
+                  {mode.label}
+                </span>
+                <p className="text-[10px] mt-0.5" style={{ color: 'var(--text-tertiary)' }}>
+                  {mode.desc}
+                </p>
+              </button>
+            ))}
+          </div>
+          <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+            自动模式下，本地引擎不可用时将智能回退到云端。
+          </p>
+        </div>
 
       {/* Engine-specific configuration */}
       <div className="border-t border-gray-200 pt-4">

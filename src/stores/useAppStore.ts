@@ -173,6 +173,16 @@ interface AppState {
   cancelModelDownload: (modelId: string) => void;
   deleteModelVersion: (engine: string, version: string) => Promise<void>;
   setActiveModel: (engine: string, version: string) => Promise<void>;
+
+  // Cloud provider management (Phase 3)
+  providers: ProviderInfo[];
+  providersLoaded: boolean;
+  loadProviders: () => Promise<void>;
+  saveProviderConfig: (provider: string, endpoint?: string, model?: string, enabled?: boolean) => Promise<void>;
+  saveProviderCredential: (provider: string, apiKey: string) => Promise<void>;
+  deleteProviderCredential: (provider: string) => Promise<void>;
+  resolveProvider: (mode: string, localAvailable: boolean, preferredCloud?: string) => Promise<void>;
+  resolvedProvider: ResolvedProviderInfo | null;
 }
 
 
@@ -199,6 +209,25 @@ export interface ModelInfo {
   progress: number | null;
   error: string | null;
 }
+
+/// Provider status returned from the backend (mirrors Rust ProviderStatus).
+export interface ProviderInfo {
+  provider: string;
+  enabled: boolean;
+  configured: boolean;
+  is_local: boolean;
+  display_name: string;
+}
+
+/// The provider resolved for the current session (auto-fallback result).
+export interface ResolvedProviderInfo {
+  provider: string;
+  display_name: string;
+  endpoint: string;
+  model: string;
+  credential_ref: string;
+}
+
 // m5 fix: Monotonic counter for unique IDs (avoids millisecond collision)
 let idCounter = 0;
 function generateId(): string {
@@ -539,6 +568,56 @@ export const useAppStore = create<AppState>((set, get) => ({
     } catch (e) {
       console.error('setActiveModel failed:', e);
       get().showToast('设置活动模型失败');
+    }
+  },
+
+  // Cloud provider management (Phase 3)
+  providers: [],
+  providersLoaded: false,
+  resolvedProvider: null,
+  loadProviders: async () => {
+    try {
+      const result = await invoke('list_providers');
+      set({ providers: result as ProviderInfo[], providersLoaded: true });
+    } catch (e) {
+      console.error('loadProviders failed:', e);
+      set({ providersLoaded: true });
+    }
+  },
+  saveProviderConfig: async (provider, endpoint, model, enabled) => {
+    try {
+      await invoke('save_provider_config', { provider, endpoint, model, enabled });
+      await get().loadProviders();
+    } catch (e) {
+      console.error('saveProviderConfig failed:', e);
+      get().showToast('保存提供者配置失败');
+    }
+  },
+  saveProviderCredential: async (provider, apiKey) => {
+    try {
+      await invoke('save_provider_credential', { provider, apiKey });
+      await get().loadProviders();
+    } catch (e) {
+      console.error('saveProviderCredential failed:', e);
+      get().showToast('保存凭证失败');
+    }
+  },
+  deleteProviderCredential: async (provider) => {
+    try {
+      await invoke('delete_provider_credential', { provider });
+      await get().loadProviders();
+    } catch (e) {
+      console.error('deleteProviderCredential failed:', e);
+      get().showToast('删除凭证失败');
+    }
+  },
+  resolveProvider: async (mode, localAvailable, preferredCloud) => {
+    try {
+      const result = await invoke('resolve_provider', { mode, localAvailable, preferredCloud });
+      set({ resolvedProvider: result as ResolvedProviderInfo });
+    } catch (e) {
+      console.error('resolveProvider failed:', e);
+      set({ resolvedProvider: null });
     }
   },
 }));
