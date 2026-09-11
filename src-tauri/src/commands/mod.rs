@@ -1169,12 +1169,9 @@ pub async fn download_model(
 
     match install_from_archive(&archive_path, &models_dir, &info.engine, &info.version, &expected) {
         Ok(res) => {
-            // Auto-activate the newly installed version.
-            let mut active = mgr.load_active();
-            active.engines.insert(info.engine.clone(), info.version.clone());
-            let _ = mgr.save_active(&active);
-
-            // Clean up the archive.
+            // Do NOT auto-activate: the frontend decides whether to switch the
+            // active model (the user may be mid-recording with another version).
+            // Emit the installed model info so the UI can prompt the user.
             std::fs::remove_file(&archive_path).ok();
 
             let _ = app_handle.emit(
@@ -1184,6 +1181,7 @@ pub async fn download_model(
                     "success": true,
                     "engine": res.engine,
                     "version": res.version,
+                    "activated": false,
                 }),
             );
             Ok(())
@@ -1333,13 +1331,17 @@ pub fn save_provider_config(
     let mut cfg = load_single_config(&db, id).unwrap_or_else(|| ProviderConfig::new(id));
 
     if let Some(ep) = endpoint {
+        // Validate endpoint scheme at the trust boundary. Reject values that
+        // are not valid ASR endpoint schemes to prevent malformed or dangerous
+        // URLs from being persisted and later opened by a cloud adapter.
+        let allowed = ["http://", "https://", "ws://", "wss://"];
+        if !allowed.iter().any(|scheme| ep.starts_with(scheme)) {
+            return Err(format!(
+                "无效的端点 URL '{}': 必须使用 http://, https://, ws:// 或 wss:// 协议",
+                ep
+            ));
+        }
         cfg.endpoint = ep;
-    }
-    if let Some(m) = model {
-        cfg.model = m;
-    }
-    if let Some(en) = enabled {
-        cfg.enabled = en;
     }
 
     save_single_config(&db, &cfg)?;

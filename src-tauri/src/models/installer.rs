@@ -86,11 +86,16 @@ pub fn install_from_archive(
 
     // Atomically move the version directory into place.
     if version_dir.exists() {
-        // Back up the existing version so we can roll back on failure.
-        let backup = models_dir.join(format!(".backup/{engine}-{version}"));
-        std::fs::create_dir_all(&backup.parent().unwrap()).ok();
-        if backup.exists() {
-            std::fs::remove_dir_all(&backup).ok();
+        // Back up the existing version with a timestamped name so we never
+        // depend on deleting a previous backup first (avoids a delete-then-rename
+        // race that fails on Windows when files are locked).
+        let ts = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis();
+        let backup = models_dir.join(format!(".backup/{engine}-{version}-{ts}"));
+        if let Some(parent) = backup.parent() {
+            std::fs::create_dir_all(parent).ok();
         }
         std::fs::rename(&version_dir, &backup).map_err(|e| {
             format!(
