@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "VoiceBoom",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "identifier": "com.voiceboom.app",
   "build": {
     "beforeDevCommand": "bun run dev",
