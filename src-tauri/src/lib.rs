@@ -13,6 +13,7 @@ mod resources;
 mod shortcut;
 mod tray;
 mod models;
+mod provider;
 
 use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
@@ -171,9 +172,16 @@ pub fn run() {
             commands::get_model_status,
             commands::download_model,
             commands::cancel_model_download,
-            commands::delete_model_version,
             commands::set_active_model,
             commands::get_model_registry,
+            // Phase 3: Cloud provider management
+            commands::list_providers,
+            commands::get_provider_config,
+            commands::save_provider_config,
+            commands::save_provider_credential,
+            commands::delete_provider_credential,
+            commands::test_provider_connection,
+            commands::resolve_provider,
         ])
         .setup(|app| {
             let handle = app.handle().clone();

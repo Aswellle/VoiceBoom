@@ -1267,3 +1267,215 @@ pub fn get_model_registry(
     let mgr = manager.blocking_read();
     serde_json::to_value(mgr.registry()).map_err(|e| e.to_string())
 }
+
+// ---------------------------------------------------------------------------
+// Cloud Provider commands (Phase 3)
+// ---------------------------------------------------------------------------
+
+use crate::provider::config::{config_key, ProviderConfig, ProviderId, ProviderMode};
+use crate::provider::credential::ProviderCredentialStore;
+use crate::provider::registry::{ProviderRegistry, ProviderStatus};
+
+/// List all providers with their runtime status (configured, enabled, local).
+#[tauri::command]
+pub fn list_providers(
+    state: State<'_, AppState>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let configs = load_provider_configs(&state)?;
+    let statuses = ProviderRegistry::list_status(&configs);
+    let result: Vec<serde_json::Value> = statuses
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "provider": s.provider,
+                "enabled": s.enabled,
+                "configured": s.configured,
+                "is_local": s.is_local,
+                "display_name": s.display_name,
+            })
+        })
+        .collect();
+    Ok(result)
+}
+
+/// Get the full config for a specific provider.
+#[tauri::command]
+pub fn get_provider_config(
+    state: State<'_, AppState>,
+    provider: String,
+) -> Result<serde_json::Value, String> {
+    let id: ProviderId = provider.parse().map_err(|e: String| e)?;
+    let configs = load_provider_configs(&state)?;
+    let cfg = ProviderRegistry::find_config(&configs, id).unwrap_or_else(|| ProviderConfig::new(id));
+    Ok(serde_json::json!({
+        "provider": cfg.provider,
+        "endpoint": cfg.endpoint,
+        "model": cfg.model,
+        "credential_ref": cfg.credential_ref,
+        "enabled": cfg.enabled,
+    }))
+}
+
+/// Save a provider's configuration (endpoint, model, enabled) to SQLite.
+#[tauri::command]
+pub fn save_provider_config(
+    state: State<'_, AppState>,
+    provider: String,
+    endpoint: Option<String>,
+    model: Option<String>,
+    enabled: Option<bool>,
+) -> Result<(), String> {
+    let id: ProviderId = provider.parse().map_err(|e: String| e)?;
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = db.as_ref().ok_or("数据库未初始化")?;
+
+    // Load existing or create default.
+    let mut cfg = load_single_config(&db, id).unwrap_or_else(|| ProviderConfig::new(id));
+
+    if let Some(ep) = endpoint {
+        cfg.endpoint = ep;
+    }
+    if let Some(m) = model {
+        cfg.model = m;
+    }
+    if let Some(en) = enabled {
+        cfg.enabled = en;
+    }
+
+    save_single_config(&db, &cfg)?;
+    Ok(())
+}
+
+/// Store a credential for a provider in OS secure storage.
+#[tauri::command]
+pub fn save_provider_credential(
+    provider: String,
+    api_key: String,
+) -> Result<serde_json::Value, String> {
+    let id: ProviderId = provider.parse().map_err(|e: String| e)?;
+    let cfg = ProviderConfig::new(id);
+    ProviderCredentialStore::store(id, &cfg.credential_ref, &api_key)?;
+    Ok(serde_json::json!({
+        "credential_ref": cfg.credential_ref,
+        "configured": true,
+    }))
+}
+
+/// Remove a provider's credential from secure storage.
+#[tauri::command]
+pub fn delete_provider_credential(
+    provider: String,
+) -> Result<(), String> {
+    let id: ProviderId = provider.parse().map_err(|e: String| e)?;
+    let cfg = ProviderConfig::new(id);
+    ProviderCredentialStore::delete(&cfg.credential_ref)?;
+    Ok(())
+}
+
+/// Test whether a provider's credential is valid (resolves from secure storage).
+#[tauri::command]
+pub fn test_provider_connection(
+    provider: String,
+) -> Result<serde_json::Value, String> {
+    let id: ProviderId = provider.parse().map_err(|e: String| e)?;
+    let cfg = ProviderConfig::new(id);
+    let status = ProviderCredentialStore::status(id, &cfg.credential_ref);
+    Ok(serde_json::json!({
+        "provider": status.provider,
+        "configured": status.configured,
+        "credential_ref": status.credential_ref,
+    }))
+}
+
+/// Resolve which provider to use given a mode + local availability (auto-fallback).
+#[tauri::command]
+pub fn resolve_provider(
+    state: State<'_, AppState>,
+    mode: String,
+    local_available: bool,
+    preferred_cloud: Option<String>,
+) -> Result<serde_json::Value, String> {
+    let mode: ProviderMode = match mode.as_str() {
+        "automatic" => ProviderMode::Automatic,
+        "offline" => ProviderMode::Offline,
+        "cloud" => ProviderMode::Cloud,
+        _ => ProviderMode::Automatic,
+    };
+    let preferred = preferred_cloud
+        .and_then(|p| p.parse::<ProviderId>().ok());
+    let configs = load_provider_configs(&state)?;
+
+    match ProviderRegistry::resolve(mode, local_available, &configs, preferred) {
+        Some(res) => Ok(serde_json::json!({
+            "provider": res.provider,
+            "display_name": res.provider.display_name(),
+            "endpoint": res.config.effective_endpoint(),
+            "model": res.config.effective_model(),
+            "credential_ref": res.config.credential_ref,
+        })),
+        None => Err("没有可用的 ASR 提供者".to_string()),
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+/// Load all provider configs from SQLite, merging with defaults.
+fn load_provider_configs(state: &AppState) -> Result<Vec<(ProviderId, ProviderConfig)>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let db = db.as_ref().ok_or("数据库未初始化")?;
+
+    let mut configs = Vec::new();
+    for id in [
+        ProviderId::LocalSenseVoice,
+        ProviderId::OpenAIRealtime,
+        ProviderId::DeepgramStreaming,
+        ProviderId::OpenAIWhisper,
+        ProviderId::CustomOpenAICompatible,
+    ] {
+        let cfg = load_single_config(&db, id).unwrap_or_else(|| ProviderConfig::new(id));
+        configs.push((id, cfg));
+    }
+    Ok(configs)
+}
+
+/// Load a single provider config from SQLite.
+fn load_single_config(db: &crate::db::Database, id: ProviderId) -> Option<ProviderConfig> {
+    let base = config_key(id, "");
+    let endpoint = db.get_setting(&format!("{base}endpoint")).ok().unwrap_or_default();
+    let model = db.get_setting(&format!("{base}model")).ok().unwrap_or_default();
+    let enabled = db.get_setting(&format!("{base}enabled")).ok().unwrap_or_default();
+    let credential_ref = db.get_setting(&format!("{base}credential_ref")).ok().unwrap_or_default();
+
+    let mut cfg = ProviderConfig::new(id);
+    if let Some(ep) = endpoint {
+        if !ep.is_empty() {
+            cfg.endpoint = ep;
+        }
+    }
+    if let Some(m) = model {
+        if !m.is_empty() {
+            cfg.model = m;
+        }
+    }
+    if let Some(en) = enabled {
+        cfg.enabled = en != "false" && en != "0";
+    }
+    if let Some(cr) = credential_ref {
+        if !cr.is_empty() {
+            cfg.credential_ref = cr;
+        }
+    }
+    Some(cfg)
+}
+
+/// Save a single provider config to SQLite.
+fn save_single_config(db: &crate::db::Database, cfg: &ProviderConfig) -> Result<(), String> {
+    let base = config_key(cfg.provider, "");
+    db.set_setting(&format!("{base}endpoint"), &cfg.endpoint).map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}model"), &cfg.model).map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}enabled"), if cfg.enabled { "true" } else { "false" }).map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}credential_ref"), &cfg.credential_ref).map_err(|e| e.to_string())?;
+    Ok(())
+}
