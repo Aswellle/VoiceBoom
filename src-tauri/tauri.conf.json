@@ -1,14 +1,16 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "VoiceBoom",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "identifier": "com.voiceboom.app",
+
   "build": {
     "beforeDevCommand": "bun run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "bun run build",
     "frontendDist": "../dist"
   },
+
   "app": {
     "windows": [
       {
@@ -50,15 +52,58 @@
       "csp": "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' wss: https:;"
     }
   },
+
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "msi",
+      "nsis",
+      "app",
+      "dmg"
+    ],
+    "category": "Utility",
+    "shortDescription": "Private, low-latency AI voice input for your desktop.",
+
+    "resources": [
+      "resources/runtime/placeholder.bin"
+    ],
+
+    "createUpdaterArtifacts": true,
+
+    "windows": {
+      "nsis": {
+        "compression": "lzma",
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+
+    "macOS": {
+      "minimumSystemVersion": "11.0",
+      "hardenedRuntime": true
+    },
+
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
+      "icons/icon.ico",
+      "icons/icon.icns"
     ]
+  },
+
+  "plugins": {
+    "updater": {
+      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
+      "endpoints": [
+        "https://github.com/Aswellle/VoiceBoom/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }

@@ -37,6 +37,15 @@ models/
 portable/
 src-tauri/models/
 *.pdb
+# Track the model registry manifest and runtime resource placeholder (spec section 5-6)
+!models/registry.json
+src-tauri/resources/*
+!src-tauri/resources/runtime
+src-tauri/resources/runtime/*
+!src-tauri/resources/runtime/.gitkeep
+portable/
+src-tauri/models/
+*.pdb
 
 # Claude Code
 .claude/

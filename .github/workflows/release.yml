@@ -3,15 +3,109 @@ name: Release
 on:
   push:
     tags:
-      - 'v*'
+      - "v*.*.*"
+
   workflow_dispatch:
 
 permissions:
   contents: write
 
+concurrency:
+  group: voiceboom-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  BUN_VERSION: "latest"
+
 jobs:
-  release:
-    runs-on: windows-latest
+
+  # ------------------------------------------------------------
+  # 1. Validate version/tag
+  # ------------------------------------------------------------
+  validate:
+    name: Validate release
+    runs-on: ubuntu-latest
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          TAG="${GITHUB_REF_NAME}"
+
+          if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid release tag: $TAG (expected vMAJOR.MINOR.PATCH)"
+            exit 1
+          fi
+
+          VERSION="${TAG#v}"
+
+          PKG_VERSION=$(node -e \
+            "console.log(require('./package.json').version)")
+
+          TAURI_VERSION=$(node -e \
+            "console.log(require('./src-tauri/tauri.conf.json').version)")
+
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+          if [[ "$PKG_VERSION" != "$VERSION" ]]; then
+            echo "package.json version ($PKG_VERSION) != tag version ($VERSION)"
+            exit 1
+          fi
+
+          if [[ "$TAURI_VERSION" != "$VERSION" ]]; then
+            echo "tauri.conf.json version ($TAURI_VERSION) != tag version ($VERSION)"
+            exit 1
+          fi
+
+      - name: Ensure tag points to current commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --tags --force
+
+          TAG_SHA=$(git rev-list -n 1 "$GITHUB_REF_NAME")
+          HEAD_SHA="$GITHUB_SHA"
+
+          if [[ "$TAG_SHA" != "$HEAD_SHA" ]]; then
+            echo "Tag does not point to workflow commit."
+            exit 1
+          fi
+
+  # ------------------------------------------------------------
+  # 2. Build platform binaries
+  # ------------------------------------------------------------
+  build:
+    name: Build ${{ matrix.name }}
+    needs: validate
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: "msi,nsis"
+
+          - name: macos-universal
+            os: macos-latest
+            target: universal-apple-darwin
+            bundles: "app,dmg"
+
+    runs-on: ${{ matrix.os }}
 
     steps:
       - name: Checkout
@@ -19,11 +113,13 @@ jobs:
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
 
-      - name: Setup Rust stable
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: x86_64-pc-windows-msvc
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -31,77 +127,255 @@ jobs:
           workspaces: src-tauri
 
       - name: Install frontend dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
-      - name: Build the app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build application
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bunx tauri build \
+            --target "${{ matrix.target }}" \
+            --bundles "${{ matrix.bundles }}"
+
+      - name: Verify macOS Universal binary
+        if: matrix.name == 'macos-universal'
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP=$(find \
+            src-tauri/target/universal-apple-darwin/release/bundle/macos \
+            -maxdepth 1 \
+            -name "*.app" \
+            -print -quit)
+
+          BIN="$APP/Contents/MacOS/VoiceBoom"
+
+          test -f "$BIN"
+
+          lipo -info "$BIN"
+          file "$BIN"
+
+      - name: Verify Windows binary exists
+        if: matrix.name == 'windows-x64'
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem `
+            "src-tauri/target/x86_64-pc-windows-msvc/release" `
+            -Filter "VoiceBoom.exe" `
+            -Recurse `
+            -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+
+          if (-not $exe) {
+            throw "VoiceBoom.exe not found"
+          }
+
+      - name: Collect release files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-artifacts
+
+          if [[ "${{ matrix.name }}" == "windows-x64" ]]; then
+
+            find \
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi \
+              -maxdepth 1 \
+              -type f \
+              -name "*.msi" \
+              -exec cp {} release-artifacts/ \;
+
+            find \
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis \
+              -maxdepth 1 \
+              -type f \
+              -name "*.exe" \
+              -exec cp {} release-artifacts/ \;
+
+            # Portable binary; confirm at runtime that WebView2 is available.
+            find \
+              src-tauri/target/x86_64-pc-windows-msvc/release \
+              -maxdepth 1 \
+              -type f \
+              -name "VoiceBoom.exe" \
+              -exec cp {} release-artifacts/VoiceBoom-Windows-x64-Portable.exe \;
+
+            cd release-artifacts
+            7z a VoiceBoom-Windows-x64-Portable.zip \
+              VoiceBoom-Windows-x64-Portable.exe
+            rm VoiceBoom-Windows-x64-Portable.exe
+            cd ..
+
+          elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
+
+            find \
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+              -maxdepth 1 \
+              -type f \
+              -name "*.dmg" \
+              -exec cp {} release-artifacts/ \;
+
+            APP=$(find \
+              src-tauri/target/universal-apple-darwin/release/bundle/macos \
+              -maxdepth 1 \
+              -name "*.app" \
+              -print -quit)
+
+            if [[ -n "$APP" ]]; then
+              ditto -c -k --sequesterRsrc --keepParent \
+                "$APP" \
+                "release-artifacts/VoiceBoom-macOS-Universal.zip"
+            fi
+
+          fi
+
+          ls -lah release-artifacts
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          tagName: v__VERSION__
-          releaseName: 'VoiceBoom v__VERSION__'
-          releaseBody: |
-            # 🎤 VoiceBoom AI — 实时流式语音输入法
+          name: VoiceBoom-${{ matrix.name }}
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
 
-            ## ✨ 亮点
+  # ------------------------------------------------------------
+  # 3. Publish one atomic Release
+  # ------------------------------------------------------------
+  publish:
+    name: Publish GitHub Release
+    needs:
+      - validate
+      - build
 
-            - **全局即说即录** — 自定义全局热键，按下说话、松开识别，任何输入框即刻出字
-            - **毫秒级流式 ASR** — 采用 sherpa-onnx SenseVoice 离线模型，实时流式返回识别结果
-            - **智能文本注入** — 自动将转录文字注入当前焦点输入框，支持剪贴板与模拟输入双模式
-            - **系统 HUD 风格** — 低存在感设计，三态显示（Idle/Listening/Result），最新内容优先
-            - **灵活上屏策略** — 直接上屏 / 确认上屏 / 仅识别，可按场景配置
-            - **完全离线、开箱即用** — 内置 SenseVoice 中文模型，零配置、零 API Key、零网络依赖
-            - **多引擎可切换** — 支持本地 SenseVoice / 云端 OpenAI Whisper / Deepgram
-            - **可配置暗色主题** — 语义化设计令牌，亮/暗主题一键切换
+    if: |
+      always() &&
+      needs.validate.result == 'success' &&
+      needs.build.result == 'success'
 
-            ## 📥 下载
+    runs-on: ubuntu-latest
 
-            | 文件 | 说明 |
-            |------|------|
-            | `VoiceBoom_x64_en-US.msi` | Windows 安装包（推荐） |
-            | `VoiceBoom_x64-setup.exe` | Windows NSIS 安装程序 |
+    steps:
+      - name: Download all release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
 
-            ## 🚀 快速开始
+      - name: Flatten assets
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            1. 安装并启动 VoiceBoom
-            2. 首次启动自动加载本地 SenseVoice 模型
-            3. 在任意输入框按下全局热键说话
-            4. 松开热键，文字自动注入当前焦点输入框
+          mkdir -p upload
 
-            ## ⚙️ 系统要求
+          find release-assets \
+            -type f \
+            \( \
+              -name "*.msi" -o \
+              -name "*.exe" -o \
+              -name "*.dmg" -o \
+              -name "*.zip" -o \
+              -name "*.json" \
+            \) \
+            -exec cp {} upload/ \;
 
-            - Windows 10/11 64位
-            - 麦克风输入设备
+          ls -lah upload
 
-            ---
+      - name: Generate checksums
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            ## What's New in v0.2.0
+          cd upload
 
-            ### P0 — Critical Fixes
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
 
-            - **Input Policy**: New direct/confirm/recognize modes (safer defaults)
-            - **Partial Rendering**: Decoupled from window resize (only resize on finals)
-            - **HUD Simplification**: Three-state machine (Idle/Listening/Result), no diagnostic dots
-            - **Text Ordering**: Newest-first with opacity hierarchy
-            - **Settings Debounce**: draftSettings + persistSettings pattern
-            - **Dark Theme Tokens**: Semantic CSS custom properties
+      - name: Ensure release does not already exist as published
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            ### P1 — Systematic Optimization
+          if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
 
-            - **Settings Restructuring**: 7 tabs → 5 task-oriented sections
-            - **Accessibility**: Toggle uses role="switch", aria-checked, focus-visible
-            - **Waveform**: Canvas-based rendering (was 12 Framer Motion nodes)
-            - **alert() → Inline Banner**: Shortcut errors now show inline
-            - **Removed Polling**: LocalResourcesTab removed (was 3s interval)
+            IS_DRAFT=$(gh release view "${GITHUB_REF_NAME}" \
+              --json isDraft \
+              --jq '.isDraft')
 
-            ### Documentation
+            if [[ "$IS_DRAFT" != "true" ]]; then
+              echo "Release already published. Refusing to mutate it."
+              exit 1
+            fi
 
-            - Added English README with language switcher
-            - Updated test counts (143 total: 124 Rust + 19 Vitest)
-            - Updated version roadmap (V1.1, V1.5, V2.0)
+          fi
 
-            ---
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
 
-            > 构建时间：${{ github.run_id }} | 提交：${{ github.sha }}
-          releaseDraft: false
-          prerelease: false
+          if ! gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
+
+            cat > release-notes.md <<EOF2
+          # VoiceBoom ${GITHUB_REF_NAME}
+
+          ## Downloads
+
+          ### Windows
+          - VoiceBoom Windows x64 installer (MSI)
+          - VoiceBoom Windows x64 installer (NSIS)
+          - VoiceBoom Windows x64 portable
+
+          ### macOS
+          - VoiceBoom macOS Universal DMG
+          - VoiceBoom macOS Universal App ZIP
+
+          ## Integrity
+          See SHA256SUMS.txt.
+
+          Commit: ${GITHUB_SHA}
+          EOF2
+
+            gh release create "${GITHUB_REF_NAME}" \
+              --draft \
+              --title "VoiceBoom ${GITHUB_REF_NAME}" \
+              --notes-file release-notes.md \
+              --verify-tag
+
+          fi
+
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release upload \
+            "${GITHUB_REF_NAME}" \
+            upload/* \
+            --clobber
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          gh release edit \
+            "${GITHUB_REF_NAME}" \
+            --draft=false
+
+      - name: Print release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "${GITHUB_REF_NAME}"
