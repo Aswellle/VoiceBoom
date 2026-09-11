@@ -245,12 +245,6 @@ jobs:
 
           elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
 
-            find \
-              src-tauri/target/universal-apple-darwin/release/bundle/dmg \
-              -maxdepth 1 \
-              -type f \
-          elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
-
             APP=$(find \
 
             if [[ -n "$APP" ]]; then

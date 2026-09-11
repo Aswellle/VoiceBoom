@@ -173,6 +173,9 @@ pub struct MacKeyStore;
 #[cfg(target_os = "macos")]
 impl SecureKeyStore for MacKeyStore {
     fn store(&self, account: &str, key: &str) -> KeyStoreResult<()> {
+        use security_framework::os::macos::keychain::SecKeychain;
+
+        let keychain = SecKeychain::default().map_err(|e| format!("Keychain error: {e}"))?;
 
         // Delete existing item first.
         if let Ok(existing) = keychain.find_internet_password("VoiceBoom", account) {
