@@ -64,6 +64,9 @@ playwright-report/
 .playwright/
 *.vitest/
 
+# Python
+__pycache__/
+
 # Env files
 .env
 .env.local
