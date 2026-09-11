@@ -100,6 +100,24 @@ pub trait AsrSession: Send + Sync {
 - **TranscriptAggregator** (`aggregator.rs`, Architecture Lock F): only `UtteranceFinal` triggers injection. `Partial` replaces current, `SegmentFinal` commits, `UtteranceFinal` commits + marks `injection_ready`. `finalize()` promotes partial for providers lacking utterance-final.
 - **LatencyTracker** (`latency.rs`): 8 pipeline timestamps (t0–t7), P50/P90/P95/P99 for capture→partial/final/injection. Instrumentation only — not yet wired into AppState.
 
+### Cloud Provider Registry (Phase 3)
+
+Unified registry for cloud ASR providers in `src-tauri/src/provider/`:
+
+- **`ProviderId`** (`config.rs`): `LocalSenseVoice`, `OpenAIRealtime`, `DeepgramStreaming`, `OpenAIWhisper`, `CustomOpenAICompatible` (+ legacy aliases). Each has default endpoint + model.
+- **`ProviderMode`** (`config.rs`): `Automatic` (prefer local, fall back to cloud), `Offline` (local only), `Cloud` (specific provider).
+- **`ProviderConfig`** (`config.rs`): per-provider endpoint, model, `credential_ref`, enabled flag. Persisted to SQLite `settings` table.
+- **`ProviderCredentialStore`** (`credential.rs`): wraps `secure_keystore` — API keys stored in OS secure storage (DPAPI/Keychain/0600), NEVER plaintext in SQLite. SQLite only holds the `credential_ref`.
+- **`ProviderRegistry`** (`registry.rs`): `resolve()` implements auto-fallback — Automatic mode prefers local when available, falls back to first configured cloud provider.
+
+The frontend exposes 3 modes to users: **Automatic** / **Local** / **Cloud** (Advanced for per-provider config).
+
+### Offline Release (Phase 4)
+
+- **`DistributionFlavor`** (`resources/mod.rs`): `Standard` / `Offline` / `Portable` enum. Controls first-run behavior, model provisioning, UI wording. Detected at runtime from bundled/portable resource presence.
+- **`tauri.offline.conf.json`**: merges `resources/asr-bundle/**` into `bundle.resources` via `bun tauri build --config`. The offline build bundles SenseVoice + VAD into the installer.
+- **Offline build is NOT built every release** (per spec). Triggered on-demand via `workflow_dispatch` with `build_offline: true`. The `build-offline` job downloads the model artifact, installs to `src-tauri/resources/asr-bundle/`, then builds with the offline config.
+
 ### Audio Pipeline
 
 - **Capture** (`audio/capture.rs`): CPAL dedicated thread, native sample rate + linear resample to 16kHz mono f32, bounded channel, startup confirmation channel, `stop_recording` drops the `audio_tx` clone to close the channel.
@@ -136,17 +154,17 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 | `src/styles/index.css` | Tailwind directives + glassmorphism design tokens |
 | `src/test/` | Vitest tests + setup (Tauri API mocks) |
 | `src-tauri/src/` | Rust backend |
-| `src-tauri/src/commands/mod.rs` | All 19 `#[tauri::command]` handlers + session state machine |
+| `src-tauri/src/commands/mod.rs` | All 26 `#[tauri::command]` handlers + session state machine |
 | `src-tauri/src/asr/` | `StreamingAsrEngine` + `AsrSession` traits, `AsrManager`, adapters, aggregator, latency |
-| `src-tauri/src/inject.rs` + `src-tauri/src/injection/` | Cross-platform text injection dispatch + `InjectionController` |
+| `src-tauri/src/provider/` | `ProviderRegistry`, `ProviderConfig`, `ProviderCredentialStore` (Phase 3) |
 | `src-tauri/src/audio/capture.rs` + `pipeline.rs` | CPAL capture + bounded real-time pipeline |
 | `src-tauri/src/shortcut/` | Global hotkey manager + platform defaults |
 | `src-tauri/src/tray/` | System tray icon + menu |
 | `src-tauri/src/resources/` | ONNX model path resolution |
 | `src-tauri/src/db/` | SQLite (settings/history/shortcuts/model_config) |
 | `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
+| `src-tauri/src/models/` | `ModelManager`, `ModelDownloader`, `ModelVerifier`, `ModelInstaller` (Phase 2) |
 | `src-tauri/vendor/` | Vendored `win-text-inject` + `enigo` crates (path deps) |
-| `scripts/` | E2E smoke test |
 | `docs/` | Architecture, ASR, testing, security, performance docs |
 
 ---
@@ -155,7 +173,7 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 
 ### Commands (`invoke`) — request/response
 
-19 commands registered in `lib.rs`, defined in `src-tauri/src/commands/mod.rs`:
+26 commands registered in `lib.rs`, defined in `src-tauri/src/commands/mod.rs`:
 
 | Command | Purpose |
 |---|---|
@@ -174,15 +192,24 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 | `set_auto_start` / `get_auto_start` | Windows startup registration |
 | `save_api_key` / `get_api_key` | Secure API key storage |
 | `get_performance_metrics` | Latency tracker readout |
-
+| `list_models` / `get_model_status` | List models / get model runtime status |
+| `download_model` / `cancel_model_download` | Download model / cancel in-flight download |
+| `delete_model_version` / `set_active_model` | Delete version / set active version |
+| `get_model_registry` | Get raw registry.json content |
+| `list_providers` | List cloud providers with status |
+| `get_provider_config` / `save_provider_config` | Read/write provider config |
+| `save_provider_credential` / `delete_provider_credential` | Store/delete provider API key |
+| `test_provider_connection` | Test provider credential |
+| `resolve_provider` | Resolve provider via auto-fallback |
 ### Events (`listen` / `emit`) — backend pushes to frontend
 
 | Event | Payload | When |
 |---|---|---|
 | `asr:result` | `{text, is_final, language, confidence}` | Partial or final recognition |
-| `asr:heartbeat` | `{frames, samples}` | Every 500ms (diagnostic) |
-| `asr:status` | string | Engine ready / model missing |
-| `asr:error` | string | Model/init/flush failures |
+| `tray:set-engine` / `tray:set-language` | string | Tray menu selection |
+| `show-about` | — | Tray about clicked |
+| `model:download_progress` | `{model_id, downloaded, total}` | Model download progress |
+| `model:download_complete` | `{model_id, success, error?}` | Model download finished |
 | `audio:level` | number | Mic level for waveform |
 | `shortcut:pressed` / `shortcut:released` | shortcut string | Hotkey state |
 | `recording:started` / `recording:stopped` | — | Lifecycle |
@@ -234,6 +261,10 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 
 - **`asr/integration_tests.rs`**: `FakeAsrSession`-driven lifecycle, Deepgram/OpenAI event parser contracts, flush/finalization, `TranscriptAggregator` (empty/partial/multi-utterance/out-of-order/duplicate-prevention), `AsrManager` send/receive/close.
 - **`asr/failure_tests.rs`**: state-machine recovery (error releases resources, duplicate-start prevented, rapid 10× start-stop), audio device failure, network disconnect / API 401 / 429, model missing, shortcut conflict, permission denied, malformed response, multiple-failure recovery.
+- **`models/verifier.rs`**: SHA256 computation + file verification roundtrip.
+- **`models/installer.rs`**: atomic extract→validate→rename roundtrip.
+- **`provider/registry.rs`**: provider resolution + auto-fallback (offline forces local, automatic prefers local then falls back to cloud, cloud uses preferred).
+- **`resources/mod.rs`**: `DistributionFlavor` detection + display.
 - Run: `cargo test`.
 
 ### E2E
@@ -289,7 +320,7 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 | `src/components/Settings/index.tsx` | 5-tab settings; runs `switch_engine`, polls `get_resource_status` |
 | `src/test/setup.ts` | Vitest global setup (Tauri mocks + jsdom stubs) |
 | `src-tauri/src/main.rs` | Windows GUI entry; `windows_subsystem=windows` |
-| `src-tauri/src/lib.rs` | `AppState`, 19-command registration, setup, system tray, file logger |
+| `src-tauri/src/lib.rs` | `AppState`, 26-command registration, setup, system tray, file logger |
 | `src-tauri/src/commands/mod.rs` | All command handlers + session state machine (replaces RecordingClaim) |
 | `src-tauri/src/inject.rs` | Cross-platform text injection dispatch |
 | `src-tauri/src/injection/` | `InjectionController` with Architecture Locks |
@@ -304,11 +335,18 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 | `src-tauri/src/audio/capture.rs` | CPAL mic capture + resample → 16kHz mono f32 |
 | `src-tauri/src/audio/pipeline.rs` | Bounded real-time audio pipeline (Architecture Lock C) |
 | `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
-| `src-tauri/tauri.conf.json` | Window definitions, bundle resources, CSP |
-| `src-tauri/tauri.test.conf.json` | Single-window E2E test config |
-| `src-tauri/capabilities/default.json` | Tauri permissions |
-| `src-tauri/vendor/` | Vendored `win-text-inject` + `enigo` (path deps, no external refs) |
-| `scripts/e2e_smoke.mjs` | tauri-driver E2E smoke test |
+| `src-tauri/src/models/mod.rs` | `ModelManager`, `ModelState`, `ModelRegistry`, embedded registry |
+| `src-tauri/src/models/downloader.rs` | `ModelDownloader` (retry, progress, resumable, cancellation) |
+| `src-tauri/src/models/verifier.rs` | `ModelVerifier` (SHA256 + size validation) |
+| `src-tauri/src/models/installer.rs` | `ModelInstaller` (atomic install via .staging + active.json) |
+| `src-tauri/src/provider/config.rs` | `ProviderId`, `ProviderMode`, `ProviderConfig` |
+| `src-tauri/src/provider/credential.rs` | `ProviderCredentialStore` (OS secure storage) |
+| `src-tauri/src/provider/registry.rs` | `ProviderRegistry` (auto-fallback resolve) |
+| `src-tauri/src/resources/mod.rs` | `DistributionFlavor`, ONNX model path resolution |
+| `src-tauri/tauri.offline.conf.json` | Offline build config (bundles asr-bundle resources) |
+| `scripts/prepare-models.py` | CI: prepare model release archives |
+| `scripts/install-model-pack.py` | CI: install model pack for offline build |
+| `scripts/verify-models.py` | CI: verify model archive integrity |
 
 ---
 
@@ -323,17 +361,16 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 - **Vendored (path deps):** `win-text-inject 0.1.1`, `enigo 0.3.0` in `src-tauri/vendor/`.
 - **Windows release:** `main.rs` sets `windows_subsystem=windows` (no console window).
 - **E2E drivers installed outside repo (not committed):** tauri-driver at `D:\cargo\bin\tauri-driver.exe`, msedgedriver at `D:\msedgedriver\`.
-- **CI:** `.github/workflows/release.yml` — builds on `windows-latest` via `tauri-action`, creates GitHub Release on `v*` tag push.
-
+- **CI:** `.github/workflows/release.yml` — validate → build matrix (win-x64 + macos-universal) → optional offline build → publish. SHA256 checksums, draft release, immutable release guard. Model releases via `model-release.yml` on `models-*` tags.
+- **Offline build:** triggered on-demand via `workflow_dispatch` (build_offline: true), NOT every release.
 ### Version Inconsistencies (known)
 
 | File | version | Note |
 |---|---|---|
-| `package.json` | `0.1.0` | ⚠️ Should be `0.2.0` to match Cargo |
-| `src-tauri/Cargo.toml` | `0.2.0` | Authoritative app version |
-| `src-tauri/tauri.conf.json` | `0.2.0` | ✅ Matches Cargo |
-| `src-tauri/tauri.test.conf.json` | `0.1.0` | ⚠️ STALE — not updated |
-
+| `package.json` | `0.3.0` | ✅ All version files now aligned |
+| `src-tauri/Cargo.toml` | `0.3.0` | Authoritative app version |
+| `src-tauri/tauri.conf.json` | `0.3.0` | ✅ Matches Cargo |
+| `src-tauri/tauri.test.conf.json` | `0.3.0` | ✅ Matches Cargo |
 ### Plugin Version Notes
 
 Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-dialog` is `2.7` and `tauri-plugin-autostart` is `2.5.1` (independent release cycles, still Tauri 2.x ABI-compatible). When adding a plugin, pair the npm + Rust crate on major.minor.
@@ -349,8 +386,10 @@ Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-di
 - **Local adapter reuse:** Changing engine/endpoint/language triggers a rebuild; identical config reuses the resident model.
 
 - **Model path resolution:** ResourceManager searches app-data dir → `asr-bundle/` → portable `models/` next to EXE. All 3 files (model, tokens, VAD) are required for readiness.
-
-- **Global shortcut registration** is short-circuited with `if (isSettingsWindow) return` so the two windows don't fight over the same hotkey.
+- **Model downloads are atomic:** `ModelInstaller` extracts to `.staging/` first, validates every file's SHA256, then renames into place. If a download crashes mid-way, the `.staging/` dir can be safely cleaned — the previous version remains intact. Never write directly into the version directory.
+- **Model registry is embedded at compile time:** `ModelManager::new_embedded()` uses `include_str!("../../../models/registry.json")`. Changing the registry requires a recompile. SHA256 values in the registry MUST be generated by the CI pipeline (`prepare-models.py`), never hand-written.
+- **Provider credentials never touch plaintext storage:** API keys are stored ONLY in OS secure storage (DPAPI/Keychain/0600 file) via `secure_keystore`. SQLite stores only the `credential_ref` string. Never log, serialize, or persist the actual API key.
+- **Cloud provider config is resolved at session start:** The `resolve_provider` command implements auto-fallback (Local → Cloud). The resolved provider + credential are bound to the recording session — changing provider config mid-recording does not affect the active session.
 
 - **Text injection on Windows** uses `win-text-inject`'s delayed rendering — do NOT replace it with a naive clipboard+paste loop (that's the anti-pattern it exists to fix). All synthesized events carry `INJECT_TAG` in `dwExtraInfo`; the hotkey hook should skip events with this tag to avoid re-triggering.
 
