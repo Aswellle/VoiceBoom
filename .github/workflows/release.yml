@@ -165,14 +165,14 @@ jobs:
             lipo -create "$BIN_ARM" "$BIN_X64" -output "$UNIVERSAL_BIN"
             echo "==> Universal binary:"
             lipo -info "$UNIVERSAL_BIN"
-
-
             echo "==> Skipping DMG: use .app zip instead"
           else
             bunx tauri build \
               --target "${{ matrix.target }}" \
               --bundles "${{ matrix.bundles }}"
           fi
+
+      - name: Verify macOS Universal binary
         if: matrix.name == 'macos-universal'
         shell: bash
         run: |
