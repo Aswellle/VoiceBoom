@@ -52,7 +52,7 @@ CODE_REVIEW_FIXES.md
 IMPLEMENTATION_SUMMARY.md
 QUICKSTART.md
 RESEARCH_TEXT_INJECTION.md
-"PC端实时流式语音输入法软件 PRD.md"  # Product requirements doc - local-only, not for open source release
+PC*PRD.md  # Product requirements doc - local-only, not for open source release
 
 *.md.bak
 
