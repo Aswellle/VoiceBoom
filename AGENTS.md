@@ -28,16 +28,16 @@ start_recording command       (src-tauri/src/commands/mod.rs)
        ├─ parse_engine_type() → AsrEngineType enum
        ├─ ResourceManager resolves model paths; builds sherpa-onnx endpoint
        │   (format: "vad_path\x1Emodel_path\x1Etokens_path", \x1E = ASCII RS)
-       ├─ AsrManager.initialize(config) → Box<dyn StreamingAsrEngine>
-       ├─ AudioCapture.start_recording() → tokio UnboundedReceiver<Vec<f32>>
+       ├─ AsrManager.initialize(config) → Box<dyn AsrSession>
+       ├─ AudioCapture.start_recording() → bounded audio channel
        └─ spawn bridge task
               │
-              ├─ audio_rx.recv() → asr.send_audio()
-              ├─ asr.receive_result() → emit 'asr:result' {text, is_final, language, confidence}
-              └─ on channel close: asr.flush() → emit final 'asr:result'
+              ├─ audio_rx.recv() → asr.push_audio()
+              ├─ asr.next_event() → TranscriptAggregator → emit 'asr:result'
+              └─ on channel close: asr.finalize() → emit final 'asr:result'
                      │
                      ▼
-              useAsr 'asr:result' listener (src/hooks/useAsr.ts:32)
+              useAsr 'asr:result' listener (src/hooks/useAsr.ts)
                      │  is_final=true → addSegment + injectFinalText
                      ▼
               useAppStore.injectFinalText (src/stores/useAppStore.ts)
@@ -62,7 +62,9 @@ Both windows load the same `index.html` and run the same `App.tsx`, which routes
 
 ### ASR Engine Abstraction
 
-All backends implement `StreamingAsrEngine` (`src-tauri/src/asr/engine_trait.rs`):
+Two traits layer the ASR system:
+
+**`StreamingAsrEngine`** (`src-tauri/src/asr/engine_trait.rs`) — the legacy async trait:
 
 ```rust
 #[async_trait]
@@ -73,18 +75,39 @@ pub trait StreamingAsrEngine: Send + Sync {
     async fn flush(&mut self) -> Result<Option<AsrResult>>;
     async fn close(&mut self) -> Result<()>;
     fn name(&self) -> &str;
-    fn is_ready(&self) -> bool;
+    fn is_ready(&) -> bool;
 }
 ```
 
-- **`AsrManager`** (`streaming.rs`) wraps the active engine in `Arc<Mutex<Box<dyn StreamingAsrEngine>>>`. It **reuses the resident local adapter** across recordings to avoid reloading the ~240MB SenseVoice model; cloud adapters are rebuilt per-recording.
+**`AsrSession`** (`src-tauri/src/asr/session.rs`) — the normalized event-driven model (Architecture Lock D):
+
+```rust
+pub trait AsrSession: Send + Sync {
+    async fn start(&mut self) -> Result<()>;
+    async fn push_audio(&mut self, audio_data: &[f32]) -> Result<()>;
+    async fn next_event(&mut self) -> Result<Option<AsrEvent>>;
+    async fn finalize(&mut self) -> Result<()>;
+    async fn shutdown(&mut self) -> Result<()>;
+}
+```
+
+`AsrEvent` enum: `Partial / SegmentFinal / UtteranceFinal / Error` — a unified model all adapters produce. `LegacySessionAdapter` wraps `StreamingAsrEngine` to implement `AsrSession`.
+
+- **`AsrManager`** (`streaming.rs`) holds `Arc<Mutex<Box<dyn AsrSession>>>`. It **reuses the resident local adapter** across recordings to avoid reloading the ~240MB SenseVoice model; cloud adapters are rebuilt per-recording.
 - **Engine routing** (`parse_engine_type`): both `"whisper_cpp"` and `"funasr"` → local SenseVoice; `"openai_whisper"` / `"deepgram"` → cloud WebSocket.
 - **Local endpoint string** is NOT a URL — it's three file paths joined by ASCII record separator `\x1E`: `"<vad_path>\x1E<model_path>\x1E<tokens_path>"`.
-- **VAD lives inside the ASR adapter** (Silero VAD in `local.rs`), not the bridge task. The bridge only pushes samples in and forwards results out.
+- **VAD lives inside the ASR adapter** (Silero VAD in `local.rs`), not the bridge task. The bridge only pushes samples in and forwards events out.
+- **TranscriptAggregator** (`aggregator.rs`, Architecture Lock F): only `UtteranceFinal` triggers injection. `Partial` replaces current, `SegmentFinal` commits, `UtteranceFinal` commits + marks `injection_ready`. `finalize()` promotes partial for providers lacking utterance-final.
+- **LatencyTracker** (`latency.rs`): 8 pipeline timestamps (t0–t7), P50/P90/P95/P99 for capture→partial/final/injection. Instrumentation only — not yet wired into AppState.
 
-### Text Injection System (new)
+### Audio Pipeline
 
-Cross-platform text injection in `src-tauri/src/inject.rs`. **Vendored crates** in `src-tauri/vendor/` (no external crate references — path dependencies only):
+- **Capture** (`audio/capture.rs`): CPAL dedicated thread, native sample rate + linear resample to 16kHz mono f32, bounded channel, startup confirmation channel, `stop_recording` drops the `audio_tx` clone to close the channel.
+- **Pipeline** (`audio/pipeline.rs`, Architecture Lock C): `AudioFrame { sequence, timestamp, samples }`, capacity 8 frames (~500ms at 64ms/frame). **Drops newest when full** (real-time priority over completeness).
+
+### Text Injection System
+
+Cross-platform text injection in `src-tauri/src/inject.rs` + `src-tauri/src/injection/` (`InjectionController` with 6 Architecture Locks). **Vendored crates** in `src-tauri/vendor/` (no external crate references — path dependencies only):
 
 | Platform | Default (Clipboard mode) | Fallback (Typing mode) |
 |---|---|---|
@@ -101,23 +124,30 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 |---|---|
 | `src/` | React frontend (components, hooks, stores, styles) |
 | `src/components/FloatingWindow/` | Main transcription surface (owns shared `useAsr` instance) |
-| `src/components/Settings/` | 7-tab settings panel (语音/AI 模型/本地资源/快捷键/显示/高级/关于) |
-| `src/components/Waveform/` | Animated audio level equalizer |
+| `src/components/Settings/` | 5-tab settings panel (基本/AI/外观/个性化/高级) |
+| `src/components/Waveform/` | Canvas-based audio level equalizer (12 bars, ~30fps) |
+| `src/components/HistoryPanel/` | History overlay (search, copy, select-all, clear with confirm) |
+| `src/components/Animation/`, `src/components/Shared/` | Shared UI primitives |
 | `src/hooks/useAsr.ts` | ASR lifecycle: start/stop + event subscriptions |
 | `src/hooks/useGlobalShortcut.ts` | Push-to-talk via `shortcut:pressed/released` |
 | `src/stores/useAppStore.ts` | Single Zustand store — all client state |
+| `src/constants/engines.ts` | `ENGINES` array — single source of truth for engine list |
+| `src/utils/` | `clipboard.ts` (copy with textarea fallback), `debounce`, `isTauri()` |
+| `src/styles/index.css` | Tailwind directives + glassmorphism design tokens |
 | `src/test/` | Vitest tests + setup (Tauri API mocks) |
 | `src-tauri/src/` | Rust backend |
-| `src-tauri/src/commands/mod.rs` | All 14 `#[tauri::command]` handlers + RAII guards |
-| `src-tauri/src/asr/` | `StreamingAsrEngine` trait + `AsrManager` + adapters |
-| `src-tauri/src/inject.rs` | Text injection dispatch (cross-platform) |
-| `src-tauri/src/audio/capture.rs` | CPAL mic capture + resampling → 16kHz mono f32 |
+| `src-tauri/src/commands/mod.rs` | All 19 `#[tauri::command]` handlers + session state machine |
+| `src-tauri/src/asr/` | `StreamingAsrEngine` + `AsrSession` traits, `AsrManager`, adapters, aggregator, latency |
+| `src-tauri/src/inject.rs` + `src-tauri/src/injection/` | Cross-platform text injection dispatch + `InjectionController` |
+| `src-tauri/src/audio/capture.rs` + `pipeline.rs` | CPAL capture + bounded real-time pipeline |
 | `src-tauri/src/shortcut/` | Global hotkey manager + platform defaults |
-| `src-tauri/src/tray/mod.rs` | System tray icon + menu |
-| `src-tauri/src/resources/mod.rs` | ONNX model path resolution |
-| `src-tauri/src/db/mod.rs` | SQLite (settings/history/shortcuts/model_config) |
+| `src-tauri/src/tray/` | System tray icon + menu |
+| `src-tauri/src/resources/` | ONNX model path resolution |
+| `src-tauri/src/db/` | SQLite (settings/history/shortcuts/model_config) |
+| `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
 | `src-tauri/vendor/` | Vendored `win-text-inject` + `enigo` crates (path deps) |
-| `scripts/` | E2E smoke test + other scripts |
+| `scripts/` | E2E smoke test |
+| `docs/` | Architecture, ASR, testing, security, performance docs |
 
 ---
 
@@ -125,7 +155,7 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 
 ### Commands (`invoke`) — request/response
 
-Defined in `src-tauri/src/commands/mod.rs`, registered in `lib.rs`:
+19 commands registered in `lib.rs`, defined in `src-tauri/src/commands/mod.rs`:
 
 | Command | Purpose |
 |---|---|
@@ -140,7 +170,10 @@ Defined in `src-tauri/src/commands/mod.rs`, registered in `lib.rs`:
 | `get_resource_endpoint` | Build sherpa-onnx endpoint string |
 | `install_model` | Copy ONNX/txt/bin/gguf into models dir |
 | `switch_engine` | Check model availability, emit `engine:switched` |
-| **`inject_text`** | **Inject transcribed text into focused field (new)** |
+| `inject_text` | Inject transcribed text into focused field |
+| `set_auto_start` / `get_auto_start` | Windows startup registration |
+| `save_api_key` / `get_api_key` | Secure API key storage |
+| `get_performance_metrics` | Latency tracker readout |
 
 ### Events (`listen` / `emit`) — backend pushes to frontend
 
@@ -171,8 +204,9 @@ bun run build            # tsc -b && vite build (type-check + bundle)
 bun run test             # run Vitest unit/component tests once
 bun run test:watch       # Vitest watch mode
 bun run test:ui          # Vitest with Web UI
-bun run coverage         # test coverage report
 bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
+bun run tauri:build:test # production build using single-window test config
+bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 ```
 
 > **Critical build rule:** Always produce release artifacts with `bun run tauri:build`. `cargo build --release` alone bypasses the Tauri CLI — it skips the frontend bundle and bakes in `devUrl`, producing an EXE that shows a white screen (`ERR_CONNECTION_REFUSED`). Use `cargo check` only to verify Rust compiles. Release output: `src-tauri/target/release/bundle/{msi,nsis}/`.
@@ -181,11 +215,12 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 
 ## Testing & QA
 
-### Two-Layer Strategy
+### Two-Layer + E2E Strategy
 
 | Layer | Tool | Runs in | Scope |
 |---|---|---|---|
 | **Unit/Component** | Vitest 4.11 + jsdom 30 | Node (mocked Tauri) | Store logic, component render/interaction, a11y |
+| **Rust integration** | `#[cfg(test)]` + `cargo test` | Native | ASR pipeline, aggregator, session state-machine, failure injection |
 | **Desktop E2E** | `scripts/e2e_smoke.mjs` (tauri-driver + msedgedriver) | Real built app | App launch, controls, text injection into focused field |
 
 ### Vitest
@@ -195,10 +230,16 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 - **components.test.tsx**: `SegmentItem` (render, a11y role/aria-label, clipboard copy + textarea fallback), `FloatingWindow` (controls render, engine hint, listening toggle, resize-on-content, scroll-to-bottom FAB).
 - Run: `bun run test` / `bun run test:watch`.
 
+### Rust Tests
+
+- **`asr/integration_tests.rs`**: `FakeAsrSession`-driven lifecycle, Deepgram/OpenAI event parser contracts, flush/finalization, `TranscriptAggregator` (empty/partial/multi-utterance/out-of-order/duplicate-prevention), `AsrManager` send/receive/close.
+- **`asr/failure_tests.rs`**: state-machine recovery (error releases resources, duplicate-start prevented, rapid 10× start-stop), audio device failure, network disconnect / API 401 / 429, model missing, shortcut conflict, permission denied, malformed response, multiple-failure recovery.
+- Run: `cargo test`.
+
 ### E2E
 
-- **Prerequisites**: build single-window test variant (`tauri build --config src-tauri/tauri.test.conf.json`), `msedgedriver` on PATH.
-- **Driver chain**: Playwright/selenium → tauri-driver (port 4444) → msedgedriver (port 4445, WebView2) → `voiceboom.exe`.
+- **Prerequisites**: build single-window test variant (`bun run tauri:build:test`), `msedgedriver` on PATH.
+- **Driver chain**: selenium → tauri-driver (port 4444) → msedgedriver (port 4445, WebView2) → `voiceboom.exe`.
 - **Single-window config** (`src-tauri/tauri.test.conf.json`): only the floating window (avoids WebDriver attaching to settings window).
 - **Covers**: app launch, engine label, start/stop button, settings button.
 - **Does NOT cover** (needs real mic/OS loop): global hotkey, live audio capture, ASR transcription, desktop drag.
@@ -208,13 +249,15 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 ## Code Conventions & Common Patterns
 
 - **Path alias:** `@/` → `src/` (configured in `tsconfig.json` + `vite.config.ts`).
-- **Bug-fix markers:** Comments like `// m5 fix:`, `// C2 fix:`, `// M11 fix:`, `// M8 fix:` encode why code looks the way it does. Read them before modifying surrounding code.
+- **Bug-fix markers:** Comments like `// m5 fix:`, `// C2 fix:`, `// M11 fix:`, `// M8 fix:`, `// P0 fix:` encode why code looks the way it does. Read them before modifying surrounding code.
 - **UI language:** All user-facing strings are **Simplified Chinese**; code comments and identifiers are **English**.
-- **State shape:** Single Zustand store (`useAppStore`) holds `status` (`'idle'|'listening'|'result'`), `segments[]`, `currentPartial`, `settings`, `audioLevel`, `toastMessage`, and now `injectionMode` (`'clipboard'|'typing'`). `updateSettings` auto-persists via `save_settings`; `loadSettings` reads `get_settings` once on mount. New method: `injectFinalText(text)` → invokes `inject_text`.
+- **State shape:** Single Zustand store (`useAppStore`) holds `sessionState`, `status` (`'idle'|'listening'|'result'`), `segments[]`, `currentPartial`, `settings`, `audioLevel`, `toastMessage`, `injectionMode` (`'clipboard'|'typing'`). `updateSettings` auto-persists via `save_settings`; `loadSettings` reads `get_settings` once on mount (M8 re-entrancy guard). `injectFinalText(text)` → invokes `inject_text`.
 - **Styling:** Tailwind v3 + glassmorphism token layer in `index.css` (`--glass-bg`, `--glass-blur: 30px`, `--glass-radius: 20px`, `.glass`/`.glass-dark` utilities). Framer Motion for animation, with `reduceMotion` escape hatch throughout.
-- **No test suite existed before this work.** No linter or formatter is configured.
+- **No linter or formatter is configured.** No `rustfmt`/`clippy` enforcement.
 - **File-based logging:** `lib.rs::init_file_logger` writes to `%TEMP%\voiceboom_debug.log` — the primary debugging channel for the release GUI app (stderr is invisible).
 - **Plugin version matching:** When adding a Tauri plugin, the npm package and Rust crate must match on major.minor, and you must add the permission in `src-tauri/capabilities/default.json`.
+- **Cross-window sync:** All via Tauri events (`engine:switched`, `tray:set-engine`, `tray:set-language`, `shortcut:pressed/released`, `recording:started`, `asr:result/error/status/timeout`, `audio:level`). Never assume shared memory between windows.
+
 ## Commit Message Discipline (mandatory)
 
 **禁止在提交消息中出现任何 AI 联合作者署名。** 每次提交前、提交后、推送前，必须主动检查并清除以下形式的 trailer：
@@ -231,7 +274,6 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 
 本规则为不可跳过的强约束，与代码风格、测试等规则同级。提交消息只承载意图、约束、验证等决策记录，不附加任何作者身份标记。
 
-
 ---
 
 ## Important Files
@@ -244,14 +286,24 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 | `src/hooks/useAsr.ts` | ASR lifecycle + event subscriptions |
 | `src/hooks/useGlobalShortcut.ts` | Push-to-talk (callback-ref pattern, M9) |
 | `src/components/FloatingWindow/index.tsx` | Main transcription surface |
-| `src/components/Settings/index.tsx` | 7-tab settings; runs `switch_engine`, polls `get_resource_status` |
+| `src/components/Settings/index.tsx` | 5-tab settings; runs `switch_engine`, polls `get_resource_status` |
 | `src/test/setup.ts` | Vitest global setup (Tauri mocks + jsdom stubs) |
-| `src-tauri/src/lib.rs` | `AppState`, command registration, setup, system tray |
-| `src-tauri/src/commands/mod.rs` | All command handlers + `RecordingClaim` / `BridgeActiveGuard` RAII guards |
+| `src-tauri/src/main.rs` | Windows GUI entry; `windows_subsystem=windows` |
+| `src-tauri/src/lib.rs` | `AppState`, 19-command registration, setup, system tray, file logger |
+| `src-tauri/src/commands/mod.rs` | All command handlers + session state machine (replaces RecordingClaim) |
 | `src-tauri/src/inject.rs` | Cross-platform text injection dispatch |
-| `src-tauri/src/asr/engine_trait.rs` | `StreamingAsrEngine` trait, `AsrConfig`, `AsrResult` |
+| `src-tauri/src/injection/` | `InjectionController` with Architecture Locks |
+| `src-tauri/src/asr/engine_trait.rs` | `StreamingAsrEngine` trait, `AsrConfig`, `AsrResult`, `AsrEngineType` |
+| `src-tauri/src/asr/session.rs` | `AsrSession` trait, `AsrEvent` enum, `LegacySessionAdapter` |
 | `src-tauri/src/asr/streaming.rs` | `AsrManager` (engine lifecycle + reuse) |
 | `src-tauri/src/asr/adapters/local.rs` | sherpa-onnx SenseVoice + Silero VAD (active local engine) |
+| `src-tauri/src/asr/adapters/openai_realtime.rs` | OpenAI Realtime WebSocket adapter |
+| `src-tauri/src/asr/adapters/deepgram.rs` | Deepgram Streaming WebSocket adapter |
+| `src-tauri/src/asr/aggregator.rs` | `TranscriptAggregator` (Architecture Lock F) |
+| `src-tauri/src/asr/latency.rs` | `LatencyTracker` (t0–t7, P50/P90/P95/P99) |
+| `src-tauri/src/audio/capture.rs` | CPAL mic capture + resample → 16kHz mono f32 |
+| `src-tauri/src/audio/pipeline.rs` | Bounded real-time audio pipeline (Architecture Lock C) |
+| `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
 | `src-tauri/tauri.conf.json` | Window definitions, bundle resources, CSP |
 | `src-tauri/tauri.test.conf.json` | Single-window E2E test config |
 | `src-tauri/capabilities/default.json` | Tauri permissions |
@@ -271,16 +323,58 @@ bun run tauri:build      # production build → .msi/.exe (Win) / .dmg (macOS)
 - **Vendored (path deps):** `win-text-inject 0.1.1`, `enigo 0.3.0` in `src-tauri/vendor/`.
 - **Windows release:** `main.rs` sets `windows_subsystem=windows` (no console window).
 - **E2E drivers installed outside repo (not committed):** tauri-driver at `D:\cargo\bin\tauri-driver.exe`, msedgedriver at `D:\msedgedriver\`.
+- **CI:** `.github/workflows/release.yml` — builds on `windows-latest` via `tauri-action`, creates GitHub Release on `v*` tag push.
+
+### Version Inconsistencies (known)
+
+| File | version | Note |
+|---|---|---|
+| `package.json` | `0.1.0` | ⚠️ Should be `0.2.0` to match Cargo |
+| `src-tauri/Cargo.toml` | `0.2.0` | Authoritative app version |
+| `src-tauri/tauri.conf.json` | `0.2.0` | ✅ Matches Cargo |
+| `src-tauri/tauri.test.conf.json` | `0.1.0` | ⚠️ STALE — not updated |
+
+### Plugin Version Notes
+
+Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-dialog` is `2.7` and `tauri-plugin-autostart` is `2.5.1` (independent release cycles, still Tauri 2.x ABI-compatible). When adding a plugin, pair the npm + Rust crate on major.minor.
 
 ---
 
 ## Modification Safety Notes
 
-- **RAII guards are load-bearing:** `RecordingClaim` (double-start guard via `AtomicBool`) and `BridgeActiveGuard` (clears `bridge_active` on task exit) prevent races. Don't bypass them.
-- **Bridge task owns flush:** Never flush from `stop_recording` — it races the bridge's channel-close flush. `stop_recording` only stops audio capture.
+- **Session state machine is load-bearing:** `start_recording` uses a `RecordingSession` state machine (Starting → Recording → Stopping → Finalizing) to guarantee only one active session. The old `RecordingClaim`/`BridgeActiveGuard` RAII guards were replaced by this. Don't bypass the state transitions.
+
+- **Bridge task owns flush:** Never flush from `stop_recording` — it races the bridge's channel-close flush. `stop_recording` only stops audio capture; the bridge task calls `finalize()`.
+
 - **Local adapter reuse:** Changing engine/endpoint/language triggers a rebuild; identical config reuses the resident model.
+
 - **Model path resolution:** ResourceManager searches app-data dir → `asr-bundle/` → portable `models/` next to EXE. All 3 files (model, tokens, VAD) are required for readiness.
+
 - **Global shortcut registration** is short-circuited with `if (isSettingsWindow) return` so the two windows don't fight over the same hotkey.
+
 - **Text injection on Windows** uses `win-text-inject`'s delayed rendering — do NOT replace it with a naive clipboard+paste loop (that's the anti-pattern it exists to fix). All synthesized events carry `INJECT_TAG` in `dwExtraInfo`; the hotkey hook should skip events with this tag to avoid re-triggering.
+
 - **Vendored crates:** `src-tauri/vendor/` contains full source for `win-text-inject` and `enigo`. They are path dependencies — no crates.io references. If updating, replace the vendored source and update `Cargo.toml` path versions.
+
 - **PRD.md is NOT tracked by git:** The file `PC端实时流式语音输入法软件 PRD.md` is a local-only product requirements document. It is listed in `.gitignore` and must NEVER be added to git tracking. Before every `git add -A` or `git add .`, check that this file is not included. If accidentally added, use `git rm --cached` to remove it immediately.
+
+  ## Release Safety Policy
+
+  Never:
+  - delete a GitHub Release
+  - delete a release tag
+  - force-push release tags
+  - overwrite published release assets
+  - change an existing immutable release
+  - modify version fields independently
+
+  Before release:
+  1. package.json version == tauri.conf.json version
+  2. git tag == version
+  3. working tree must be clean
+  4. CI build must pass
+  5. all release artifacts must exist
+  6. SHA256SUMS must be generated
+  7. release starts as draft
+
+  Never publish a release until all platform builds pass.
