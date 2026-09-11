@@ -164,6 +164,15 @@ interface AppState {
   clearHistory: () => Promise<void>;
   isHistoryOpen: boolean;
   setHistoryOpen: (open: boolean) => void;
+
+  // Model management (Phase 2)
+  models: ModelInfo[];
+  modelsLoaded: boolean;
+  loadModels: () => Promise<void>;
+  downloadModel: (modelId: string) => Promise<void>;
+  cancelModelDownload: (modelId: string) => void;
+  deleteModelVersion: (engine: string, version: string) => Promise<void>;
+  setActiveModel: (engine: string, version: string) => Promise<void>;
 }
 
 
@@ -177,7 +186,19 @@ export interface HistoryRecord {
   created_at: number;
 }
 
-
+/// Model info returned from the backend (mirrors Rust ModelStatus).
+export interface ModelInfo {
+  id: string;
+  engine: string;
+  version: string;
+  state: string;
+  installed_versions: string[];
+  active_version: string | null;
+  size_bytes: number;
+  languages: string[];
+  progress: number | null;
+  error: string | null;
+}
 // m5 fix: Monotonic counter for unique IDs (avoids millisecond collision)
 let idCounter = 0;
 function generateId(): string {
@@ -473,6 +494,51 @@ export const useAppStore = create<AppState>((set, get) => ({
       set((state) => ({ settings: { ...state.settings, autoStart: previous } }));
       const msg = typeof e === 'string' ? e : '开机自启设置失败';
       get().showToast(msg);
+    }
+  },
+
+  // Model management (Phase 2)
+  models: [],
+  modelsLoaded: false,
+  loadModels: async () => {
+    try {
+      const result = await invoke('list_models');
+      set({ models: result as ModelInfo[], modelsLoaded: true });
+    } catch (e) {
+      console.error('loadModels failed:', e);
+      set({ modelsLoaded: true });
+    }
+  },
+  downloadModel: async (modelId) => {
+    try {
+      await invoke('download_model', { modelId });
+      await get().loadModels();
+    } catch (e) {
+      console.error('downloadModel failed:', e);
+      get().showToast('模型下载失败');
+    }
+  },
+  cancelModelDownload: (modelId) => {
+    invoke('cancel_model_download', { modelId }).catch((e) => {
+      console.error('cancelModelDownload failed:', e);
+    });
+  },
+  deleteModelVersion: async (engine, version) => {
+    try {
+      await invoke('delete_model_version', { engine, version });
+      await get().loadModels();
+    } catch (e) {
+      console.error('deleteModelVersion failed:', e);
+      get().showToast('删除模型失败');
+    }
+  },
+  setActiveModel: async (engine, version) => {
+    try {
+      await invoke('set_active_model', { engine, version });
+      await get().loadModels();
+    } catch (e) {
+      console.error('setActiveModel failed:', e);
+      get().showToast('设置活动模型失败');
     }
   },
 }));

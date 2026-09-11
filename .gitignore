@@ -34,15 +34,8 @@ src-tauri/embedded_resources/
 src-tauri/resources/*
 !src-tauri/resources/runtime
 src-tauri/asr-bundle/
-/models/
-portable/
-src-tauri/models/
-# Track the model registry manifest and runtime resource placeholder (spec section 5-6)
+/models/*
 !models/registry.json
-src-tauri/resources/*
-!src-tauri/resources/runtime
-src-tauri/resources/runtime/*
-!src-tauri/resources/runtime/.gitkeep
 portable/
 src-tauri/models/
 *.pdb

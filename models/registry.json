@@ -1,0 +1,45 @@
+{
+  "schemaVersion": 1,
+  "channel": "stable",
+  "models": [
+    {
+      "id": "sensevoice-small-int8",
+      "engine": "sensevoice",
+      "version": "1.0.0",
+      "languages": [
+        "zh",
+        "en",
+        "ja",
+        "ko",
+        "yue"
+      ],
+      "platforms": [
+        "windows-x86_64",
+        "darwin-x86_64",
+        "darwin-aarch64"
+      ],
+      "archive": {
+        "url": "https://github.com/Aswellle/VoiceBoom/releases/download/models-sensevoice-v1.0.0/VoiceBoom-Model-sensevoice-small-int8-v1.0.0.zip",
+        "sha256": "REPLACE_WITH_REAL_SHA256",
+        "size": 250000000
+      },
+      "files": [
+        {
+          "path": "sensevoice/1.0.0/model.int8.onnx",
+          "size": 0,
+          "sha256": "REPLACE"
+        },
+        {
+          "path": "sensevoice/1.0.0/tokens.txt",
+          "size": 0,
+          "sha256": "REPLACE"
+        },
+        {
+          "path": "sensevoice/1.0.0/silero_vad.onnx",
+          "size": 0,
+          "sha256": "REPLACE"
+        }
+      ]
+    }
+  ]
+}

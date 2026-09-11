@@ -1,0 +1,127 @@
+name: Model Release
+
+on:
+  push:
+    tags:
+      - "models-*"
+  workflow_dispatch:
+    inputs:
+      channel:
+        description: "Model channel (stable/beta)"
+        required: false
+        default: "stable"
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: voiceboom-model-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  PYTHON_VERSION: "3.11"
+
+jobs:
+  # ------------------------------------------------------------
+  # 1. Prepare model archives
+  # ------------------------------------------------------------
+  prepare:
+    name: Prepare model archives
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Cache model downloads
+        uses: actions/cache@v4
+        with:
+          path: .model-cache
+          key: voiceboom-model-${{ hashFiles('models/registry.json') }}
+
+      - name: Prepare model archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/prepare-models.py \
+            --registry models/registry.json \
+            --cache .model-cache \
+            --output model-release
+
+      - name: Verify model archives
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/verify-models.py \
+            --registry models/registry.json \
+            --dir model-release
+
+      - name: Upload model artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceBoom-models
+          path: model-release/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------------
+  # 2. Publish model release
+  # ------------------------------------------------------------
+  publish:
+    name: Publish model release
+    needs: prepare
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download model artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: model-assets
+
+      - name: Flatten assets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p upload
+          find model-assets -type f \
+            \( -name "*.zip" -o -name "*.sha256" -o -name "*.json" \) \
+            -exec cp {} upload/ \;
+          ls -lah upload
+
+      - name: Create draft model release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+
+          if ! gh release view "$TAG" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --draft \
+              --title "VoiceBoom Models ${TAG}" \
+              --notes "Local ASR model packages for VoiceBoom." \
+              --verify-tag
+          fi
+
+      - name: Upload model assets
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release upload "${GITHUB_REF_NAME}" upload/* --clobber
+
+      - name: Publish model release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          gh release edit "${GITHUB_REF_NAME}" --draft=false

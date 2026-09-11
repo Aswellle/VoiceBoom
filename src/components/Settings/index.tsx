@@ -9,7 +9,7 @@ import { open } from '@tauri-apps/plugin-dialog';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import { ENGINES, type EngineInfo } from '../../constants/engines';
 
-type TabId = 'basic' | 'ai' | 'appearance' | 'personalization' | 'advanced';
+type TabId = 'basic' | 'ai' | 'model' | 'appearance' | 'personalization' | 'advanced';
 
 interface Tab {
   id: TabId;
@@ -20,6 +20,7 @@ interface Tab {
 const TABS: Tab[] = [
   { id: 'basic', label: '基本', icon: '🎤' },
   { id: 'ai', label: 'AI', icon: '🤖' },
+  { id: 'model', label: '模型', icon: '📦' },
   { id: 'appearance', label: '外观', icon: '🎨' },
   { id: 'personalization', label: '个性化', icon: '✨' },
   { id: 'advanced', label: '高级', icon: '⚙️' },
@@ -467,11 +468,131 @@ function AITab() {
   );
 }
 
+/// Format bytes into a human-readable size string.
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  const value = bytes / Math.pow(1024, i);
+  return `${value.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
+}
+
+/// Tab content: Model management — download, install, and manage local ASR models.
+function ModelTab() {
+  const models = useAppStore((s) => s.models);
+  const loadModels = useAppStore((s) => s.loadModels);
+  const downloadModel = useAppStore((s) => s.downloadModel);
+  const cancelModelDownload = useAppStore((s) => s.cancelModelDownload);
+  const deleteModelVersion = useAppStore((s) => s.deleteModelVersion);
+  const setActiveModel = useAppStore((s) => s.setActiveModel);
+
+  useEffect(() => {
+    loadModels();
+  }, [loadModels]);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <p className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+        本地 ASR 模型独立于应用管理。首次使用本地引擎时下载模型，后续可独立更新。
+      </p>
+      {models.length === 0 ? (
+        <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>暂无可用模型</p>
+      ) : (
+        models.map((model) => {
+          const isDownloading = model.state === 'downloading';
+          const isReady = model.state === 'ready';
+          const progress = model.progress ?? 0;
+          return (
+            <div
+              key={model.id}
+              className="p-3 rounded-lg border"
+              style={{ borderColor: 'var(--border-subtle)', background: 'var(--surface-base)' }}
+            >
+              <div className="flex items-center justify-between mb-2">
+                <div>
+                  <span className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                    {model.id}
+                  </span>
+                  <span className="ml-2 text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                    v{model.version} · {formatBytes(model.size_bytes)}
+                  </span>
+                </div>
+                <span className="text-xs" style={{ color: 'var(--text-tertiary)' }}>
+                  {model.languages.join(', ')}
+                </span>
+              </div>
+
+              {isDownloading && (
+                <div className="mb-2">
+                  <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border-subtle)' }}>
+                    <div
+                      className="h-full rounded-full transition-all"
+                      style={{ width: `${Math.round(progress * 100)}%`, background: 'var(--accent)' }}
+                    />
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-tertiary)' }}>
+                    下载中… {Math.round(progress * 100)}%
+                  </p>
+                </div>
+              )}
+
+              {model.error && (
+                <p className="text-xs mb-2" style={{ color: 'var(--danger, #e55)' }}>{model.error}</p>
+              )}
+
+              <div className="flex gap-2">
+                {isDownloading ? (
+                  <button
+                    onClick={() => cancelModelDownload(model.id)}
+                    className="text-xs px-3 py-1 rounded-md cursor-pointer"
+                    style={{ background: 'var(--danger, #e55)', color: '#fff' }}
+                  >
+                    取消
+                  </button>
+                ) : isReady ? (
+                  <span className="text-xs px-3 py-1 rounded-md" style={{ background: 'var(--accent-muted)', color: 'var(--accent)' }}>
+                    ✓ 已就绪
+                  </span>
+                ) : (
+                  <button
+                    onClick={() => downloadModel(model.id)}
+                    className="text-xs px-3 py-1 rounded-md cursor-pointer"
+                    style={{ background: 'var(--accent)', color: '#fff' }}
+                  >
+                    下载
+                  </button>
+                )}
+                {model.installed_versions.length > 0 && (
+                  <button
+                    onClick={() => deleteModelVersion(model.engine, model.version)}
+                    className="text-xs px-3 py-1 rounded-md cursor-pointer"
+                    style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                  >
+                    删除
+                  </button>
+                )}
+                {model.installed_versions.includes(model.version) && !isReady && (
+                  <button
+                    onClick={() => setActiveModel(model.engine, model.version)}
+                    className="text-xs px-3 py-1 rounded-md cursor-pointer"
+                    style={{ border: '1px solid var(--border-subtle)', color: 'var(--text-secondary)' }}
+                  >
+                    激活
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })
+      )}
+    </div>
+  );
+}
+
 /// Tab content: Appearance settings — HUD style, theme, display
 function AppearanceTab() {
   const settings = useAppStore((s) => s.settings);
   const updateSettings = useAppStore((s) => s.updateSettings);
-
   return (
     <div className="flex flex-col gap-4">
       <Slider
@@ -561,6 +682,8 @@ export function SettingsPanel() {
         return <BasicTab />;
       case 'ai':
         return <AITab />;
+      case 'model':
+        return <ModelTab />;
       case 'appearance':
         return <AppearanceTab />;
       case 'personalization':
