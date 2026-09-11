@@ -12,6 +12,7 @@ mod injection;
 mod resources;
 mod shortcut;
 mod tray;
+mod models;
 
 use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
@@ -99,6 +100,8 @@ pub struct AppState {
     pub session: SessionHandle,
     /// Injection controller for dedupe and stale session protection.
     pub injection_controller: std::sync::Mutex<crate::injection::InjectionController>,
+    /// Model manager — local ASR model lifecycle (Phase 2).
+    pub model_manager: crate::commands::ModelManagerHandle,
 }
 
 impl AppState {
@@ -117,6 +120,9 @@ impl AppState {
             injection_controller: std::sync::Mutex::new(
                 crate::injection::InjectionController::new(),
             ),
+            model_manager: std::sync::Arc::new(tokio::sync::RwLock::new(
+                crate::models::ModelManager::new_embedded(std::path::PathBuf::from(".")),
+            )),
         }
     }
 }
@@ -158,9 +164,16 @@ pub fn run() {
             commands::inject_text,
             commands::set_auto_start,
             commands::get_auto_start,
-            commands::save_api_key,
             commands::get_api_key,
             commands::get_performance_metrics,
+            // Phase 2: Model management
+            commands::list_models,
+            commands::get_model_status,
+            commands::download_model,
+            commands::cancel_model_download,
+            commands::delete_model_version,
+            commands::set_active_model,
+            commands::get_model_registry,
         ])
         .setup(|app| {
             let handle = app.handle().clone();
@@ -200,6 +213,15 @@ pub fn run() {
             *app.state::<AppState>().resource_manager.lock().unwrap() = Some(resource_manager);
             log::info!("Resource manager initialized at: {:?}", resources::default_resource_dir(&app_dir));
 
+            // Phase 2: Initialize model manager with the app-data models directory.
+            let models_dir = app_dir.join("models");
+            std::fs::create_dir_all(&models_dir).ok();
+            {
+                let mm = app.state::<AppState>().model_manager.clone();
+                let mut guard = mm.blocking_write();
+                guard.init_models_dir(models_dir.clone());
+            }
+            log::info!("Model manager initialized at: {:?}", models_dir);
             // Initialize system tray
             match tray::create_tray(&handle) {
                 Ok(_) => log::info!("System tray created successfully"),

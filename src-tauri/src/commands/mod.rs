@@ -1004,3 +1004,266 @@ pub fn get_performance_metrics(
         ]
     }))
 }
+
+// ---------------------------------------------------------------------------
+// Model Management commands (Phase 2)
+// ---------------------------------------------------------------------------
+
+use crate::models::{
+    downloader::{download, DownloadHandle, ProgressFn},
+    installer::{install_from_archive, ExpectedFile},
+    verifier::verify_archive,
+    ActiveMap, ModelManager, ModelState,
+};
+use tokio::sync::RwLock;
+
+/// Shared handle to the ModelManager, stored in AppState.
+pub type ModelManagerHandle = std::sync::Arc<RwLock<ModelManager>>;
+
+/// Get the default models directory for the current platform.
+/// Windows: %LOCALAPPDATA%\VoiceBoom\models\
+/// macOS:   ~/Library/Application Support/VoiceBoom/models/
+fn default_models_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    let app_data = app_handle
+        .path()
+        .app_data_dir()
+        .map_err(|e| format!("无法获取应用数据目录: {e}"))?;
+    Ok(app_data.join("models"))
+}
+
+/// List all models with their runtime status.
+#[tauri::command]
+pub fn list_models(
+    app_handle: AppHandle,
+    manager: State<'_, ModelManagerHandle>,
+) -> Result<Vec<serde_json::Value>, String> {
+    let mgr = manager
+        .blocking_read()
+        .clone();
+    let statuses = mgr.list_models();
+    let result = statuses
+        .into_iter()
+        .map(|s| {
+            serde_json::json!({
+                "id": s.id,
+                "engine": s.engine,
+                "version": s.version,
+                "state": s.state,
+                "installed_versions": s.installed_versions,
+                "active_version": s.active_version,
+                "size_bytes": s.size_bytes,
+                "languages": s.languages,
+                "progress": s.progress,
+                "error": s.error,
+            })
+        })
+        .collect();
+    Ok(result)
+}
+
+/// Get status for a single model by id.
+#[tauri::command]
+pub fn get_model_status(
+    manager: State<'_, ModelManagerHandle>,
+    model_id: String,
+) -> Result<serde_json::Value, String> {
+    let mgr = manager.blocking_read();
+    let status = mgr
+        .get_status(&model_id)
+        .ok_or_else(|| format!("未知模型: {model_id}"))?;
+    Ok(serde_json::json!({
+        "id": status.id,
+        "engine": status.engine,
+        "version": status.version,
+        "state": status.state,
+        "installed_versions": status.installed_versions,
+        "active_version": status.active_version,
+        "size_bytes": status.size_bytes,
+        "languages": status.languages,
+        "progress": status.progress,
+        "error": status.error,
+    }))
+}
+
+/// Download a model from its registry URL.
+/// Emits `model:download_progress` and `model:download_complete` events.
+#[tauri::command]
+pub async fn download_model(
+    app_handle: AppHandle,
+    manager: State<'_, ModelManagerHandle>,
+    model_id: String,
+) -> Result<(), String> {
+    let mgr = manager.read().await.clone();
+    let info = mgr
+        .registry()
+        .models
+        .iter()
+        .find(|m| m.id == model_id)
+        .cloned()
+        .ok_or_else(|| format!("未知模型: {model_id}"))?;
+
+    let models_dir = default_models_dir(&app_handle)?;
+    let archive_path = models_dir.join(format!("{}.zip", info.id));
+
+    let handle = DownloadHandle::new();
+    let downloads_arc = mgr.downloads();
+    {
+        let mut downloads = downloads_arc.write().await;
+        downloads.insert(model_id.clone(), handle.clone());
+    }
+
+    let app = app_handle.clone();
+    let model_id_clone = model_id.clone();
+    let progress_cb: ProgressFn = Box::new(move |downloaded, total| {
+        let _ = app.emit(
+            "model:download_progress",
+            serde_json::json!({
+                "model_id": model_id_clone,
+                "downloaded": downloaded,
+                "total": total,
+            }),
+        );
+    });
+
+    let result = download(&info.archive.url, &archive_path, &handle, Some(progress_cb)).await;
+
+    {
+        let mut downloads = downloads_arc.write().await;
+        downloads.remove(&model_id);
+    }
+
+    if let Err(e) = result {
+        let _ = app_handle.emit(
+            "model:download_complete",
+            serde_json::json!({
+                "model_id": model_id,
+                "success": false,
+                "error": e,
+            }),
+        );
+        return Err(e);
+    }
+
+    // Verify archive, then install.
+    if let Err(e) = verify_archive(&archive_path, &info.archive.sha256) {
+        let _ = app_handle.emit(
+            "model:download_complete",
+            serde_json::json!({
+                "model_id": model_id,
+                "success": false,
+                "error": e,
+            }),
+        );
+        return Err(e);
+    }
+
+    let expected: Vec<ExpectedFile> = info
+        .files
+        .iter()
+        .map(|f| ExpectedFile {
+            relative_path: f.path.clone(),
+            size: f.size,
+            sha256: f.sha256.clone(),
+        })
+        .collect();
+
+    match install_from_archive(&archive_path, &models_dir, &info.engine, &info.version, &expected) {
+        Ok(res) => {
+            // Auto-activate the newly installed version.
+            let mut active = mgr.load_active();
+            active.engines.insert(info.engine.clone(), info.version.clone());
+            let _ = mgr.save_active(&active);
+
+            // Clean up the archive.
+            std::fs::remove_file(&archive_path).ok();
+
+            let _ = app_handle.emit(
+                "model:download_complete",
+                serde_json::json!({
+                    "model_id": model_id,
+                    "success": true,
+                    "engine": res.engine,
+                    "version": res.version,
+                }),
+            );
+            Ok(())
+        }
+        Err(e) => {
+            let _ = app_handle.emit(
+                "model:download_complete",
+                serde_json::json!({
+                    "model_id": model_id,
+                    "success": false,
+                    "error": e,
+                }),
+            );
+            Err(e)
+        }
+    }
+}
+
+/// Cancel an in-flight model download.
+#[tauri::command]
+pub async fn cancel_model_download(
+    manager: State<'_, ModelManagerHandle>,
+    model_id: String,
+) -> Result<(), String> {
+    let mgr = manager.read().await;
+    let downloads_arc = mgr.downloads();
+    let downloads = downloads_arc.read().await;
+    if let Some(handle) = downloads.get(&model_id) {
+        handle.cancel();
+        Ok(())
+    } else {
+        Err(format!("没有正在下载的模型: {model_id}"))
+    }
+}
+
+/// Delete a specific installed version of a model.
+#[tauri::command]
+pub fn delete_model_version(
+    app_handle: AppHandle,
+    manager: State<'_, ModelManagerHandle>,
+    engine: String,
+    version: String,
+) -> Result<(), String> {
+    let mgr = manager.blocking_read();
+    let models_dir = default_models_dir(&app_handle)?;
+    crate::models::installer::remove_version(&models_dir, &engine, &version)?;
+
+    // If the deleted version was active, clear it.
+    let mut active = mgr.load_active();
+    if active.engines.get(&engine).map(|v| v == &version).unwrap_or(false) {
+        active.engines.remove(&engine);
+        mgr.save_active(&active)
+            .map_err(|e| format!("保存 active.json 失败: {e}"))?;
+    }
+    Ok(())
+}
+
+/// Set the active version for an engine (updates active.json).
+#[tauri::command]
+pub fn set_active_model(
+    manager: State<'_, ModelManagerHandle>,
+    engine: String,
+    version: String,
+) -> Result<(), String> {
+    let mgr = manager.blocking_read();
+    if !mgr.is_version_ready(&engine, &version) {
+        return Err(format!("模型版本未安装: {engine}/{version}"));
+    }
+    let mut active = mgr.load_active();
+    active.engines.insert(engine, version);
+    mgr.save_active(&active)
+        .map_err(|e| format!("保存 active.json 失败: {e}"))?;
+    Ok(())
+}
+
+/// Get the raw registry.json content.
+#[tauri::command]
+pub fn get_model_registry(
+    manager: State<'_, ModelManagerHandle>,
+) -> Result<serde_json::Value, String> {
+    let mgr = manager.blocking_read();
+    serde_json::to_value(mgr.registry()).map_err(|e| e.to_string())
+}
