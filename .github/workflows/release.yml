@@ -168,7 +168,11 @@ jobs:
 
 
             echo "==> Skipping DMG: use .app zip instead"
-      - name: Verify macOS Universal binary
+          else
+            bunx tauri build \
+              --target "${{ matrix.target }}" \
+              --bundles "${{ matrix.bundles }}"
+          fi
         if: matrix.name == 'macos-universal'
         shell: bash
         run: |
