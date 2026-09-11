@@ -68,7 +68,6 @@
       "resources/runtime/.gitkeep"
     ],
 
-    "createUpdaterArtifacts": true,
 
     "windows": {
       "nsis": {
@@ -93,17 +92,7 @@
       "icons/icon.ico",
       "icons/icon.icns"
     ]
-  },
-
-  "plugins": {
-    "updater": {
-      "pubkey": "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY",
-      "endpoints": [
-        "https://github.com/Aswellle/VoiceBoom/releases/latest/download/latest.json"
-      ],
-      "windows": {
-        "installMode": "passive"
-      }
-    }
   }
+
+
 }

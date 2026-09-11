@@ -105,10 +105,10 @@ jobs:
             os: windows-latest
             target: x86_64-pc-windows-msvc
             bundles: "msi,nsis"
-
           - name: macos-universal
             os: macos-latest
             target: universal-apple-darwin
+            targets: aarch64-apple-darwin x86_64-apple-darwin
             bundles: "app,dmg"
 
     runs-on: ${{ matrix.os }}
@@ -125,7 +125,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets || matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -133,17 +133,40 @@ jobs:
           workspaces: src-tauri
 
       - name: Install frontend dependencies
-        run: bun install --frozen-lockfile
-
       - name: Build application
         shell: bash
         run: |
           set -euo pipefail
 
-          bunx tauri build \
-            --target "${{ matrix.target }}" \
-            --bundles "${{ matrix.bundles }}"
+          if [[ "${{ matrix.name }}" == "macos-universal" ]]; then
+            # Rust 1.82+ removed the universal-apple-darwin target.
+            # Build each arch separately, then lipo them together.
+            for ARCH in aarch64-apple-darwin x86_64-apple-darwin; do
+              echo "==> Building $ARCH"
+              bunx tauri build \
+                --target "$ARCH" \
+                --bundles app
+            done
 
+            # Locate the two .app bundles and merge their binaries.
+            APP_ARM=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
+              -maxdepth 1 -name "*.app" -print -quit)
+            APP_X64=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
+              -maxdepth 1 -name "*.app" -print -quit)
+            BIN_ARM="$APP_ARM/Contents/MacOS/VoiceBoom"
+            BIN_X64="$APP_X64/Contents/MacOS/VoiceBoom"
+
+            mkdir -p src-tauri/target/universal-apple-darwin/release/bundle/macos
+            cp -R "$APP_ARM" src-tauri/target/universal-apple-darwin/release/bundle/macos/
+            UNIVERSAL_APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/$(basename "$APP_ARM")
+            UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
+
+            lipo -create "$BIN_ARM" "$BIN_X64" -output "$UNIVERSAL_BIN"
+            echo "==> Universal binary:"
+            lipo -info "$UNIVERSAL_BIN"
+
+
+            echo "==> Skipping DMG: use .app zip instead"
       - name: Verify macOS Universal binary
         if: matrix.name == 'macos-universal'
         shell: bash
@@ -221,14 +244,9 @@ jobs:
               src-tauri/target/universal-apple-darwin/release/bundle/dmg \
               -maxdepth 1 \
               -type f \
-              -name "*.dmg" \
-              -exec cp {} release-artifacts/ \;
+          elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
 
             APP=$(find \
-              src-tauri/target/universal-apple-darwin/release/bundle/macos \
-              -maxdepth 1 \
-              -name "*.app" \
-              -print -quit)
 
             if [[ -n "$APP" ]]; then
               ditto -c -k --sequesterRsrc --keepParent \
@@ -270,6 +288,7 @@ jobs:
           - name: macos-universal-offline
             os: macos-latest
             target: universal-apple-darwin
+            targets: aarch64-apple-darwin x86_64-apple-darwin
             bundles: "app,dmg"
 
     runs-on: ${{ matrix.os }}
@@ -292,7 +311,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.targets || matrix.target }}
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -318,11 +337,37 @@ jobs:
         run: |
           set -euo pipefail
 
-          bunx tauri build \
-            --config src-tauri/tauri.offline.conf.json \
-            --target "${{ matrix.target }}" \
-            --bundles "${{ matrix.bundles }}"
+          if [[ "${{ matrix.name }}" == "macos-universal-offline" ]]; then
+            for ARCH in aarch64-apple-darwin x86_64-apple-darwin; do
+              echo "==> Building $ARCH"
+              bunx tauri build \
+                --config src-tauri/tauri.offline.conf.json \
+                --target "$ARCH" \
+                --bundles app
+            done
 
+            APP_ARM=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
+              -maxdepth 1 -name "*.app" -print -quit)
+            APP_X64=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
+              -maxdepth 1 -name "*.app" -print -quit)
+            BIN_ARM="$APP_ARM/Contents/MacOS/VoiceBoom"
+            BIN_X64="$APP_X64/Contents/MacOS/VoiceBoom"
+
+            mkdir -p src-tauri/target/universal-apple-darwin/release/bundle/macos
+            cp -R "$APP_ARM" src-tauri/target/universal-apple-darwin/release/bundle/macos/
+            UNIVERSAL_APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/$(basename "$APP_ARM")
+            UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
+
+            lipo -create "$BIN_ARM" "$BIN_X64" -output "$UNIVERSAL_BIN"
+            echo "==> Universal binary:"
+            lipo -info "$UNIVERSAL_BIN"
+            echo "==> Skipping DMG: use .app zip instead"
+          else
+            bunx tauri build \
+              --config src-tauri/tauri.offline.conf.json \
+              --target "${{ matrix.target }}" \
+              --bundles "${{ matrix.bundles }}"
+          fi
       - name: Collect offline release files
         shell: bash
         run: |
@@ -348,12 +393,17 @@ jobs:
 
           elif [[ "${{ matrix.name }}" == "macos-universal-offline" ]]; then
 
-            find \
-              src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+            APP=$(find \
+              src-tauri/target/universal-apple-darwin/release/bundle/macos \
               -maxdepth 1 \
-              -type f \
-              -name "*.dmg" \
-              -exec cp {} release-artifacts/ \;
+              -name "*.app" \
+              -print -quit)
+
+            if [[ -n "$APP" ]]; then
+              ditto -c -k --sequesterRsrc --keepParent \
+                "$APP" \
+                "release-artifacts/VoiceBoom-macOS-Universal-Offline.zip"
+            fi
 
           fi
 
