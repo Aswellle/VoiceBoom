@@ -7,6 +7,8 @@
 // - Cancellation via AtomicBool flag
 // - Resumable downloads using `.part` files + Range header
 // - Concurrent-download handle so the manager can cancel in-flight jobs
+//
+// The HTTP client is passed in (not built per-download) so connections pool.
 
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -55,7 +57,10 @@ impl Default for DownloadHandle {
 /// - Calls `on_progress(downloaded, total)` as chunks arrive.
 /// - Stops early if the handle is cancelled.
 /// - On success, renames `.part` → final `dest`.
+///
+/// `client` is a shared HTTP client (connection reuse across downloads).
 pub async fn download(
+    client: &reqwest::Client,
     url: &str,
     dest: &Path,
     handle: &DownloadHandle,
@@ -76,12 +81,6 @@ pub async fn download(
         0
     };
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(60))
-        .redirect(reqwest::redirect::Policy::limited(10))
-        .build()
-        .map_err(|e| format!("HTTP 客户端创建失败: {e}"))?;
-
     let mut last_err = None;
     for attempt in 0..3 {
         if attempt > 0 {
@@ -89,7 +88,7 @@ pub async fn download(
             tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
         }
 
-        match attempt_download(&client, url, &part_path, resume_from, handle, &on_progress).await {
+        match attempt_download(client, url, &part_path, resume_from, handle, &on_progress).await {
             Ok(()) => {
                 // Success — rename .part → final.
                 std::fs::rename(&part_path, dest).map_err(|e| {

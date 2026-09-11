@@ -87,7 +87,10 @@ def main():
             # The relative path inside the archive is <engine>/<version>/<filename>.
             filename = Path(relative).name
             dest = staging / filename
-            if dest.exists() and dest.stat().st_size == file_info.get("size", 0):
+            # Use SHA256 for cache validation. Size-only checks can let a
+            # truncated/corrupted file pass if it happens to match the size.
+            expected_sha = file_info.get("sha256", "")
+            if dest.exists() and expected_sha and expected_sha != "REPLACE" and sha256_file(dest) == expected_sha:
                 print(f"  cached: {filename}")
             else:
                 # Files may be hosted individually; fall back to the archive URL
@@ -95,12 +98,6 @@ def main():
                 file_url = file_info.get("url", "")
                 if file_url:
                     download(file_url, dest, file_info.get("size", 0))
-
-            # Compute + fill real SHA256 and size.
-            file_info["size"] = dest.stat().st_size
-            file_info["sha256"] = sha256_file(dest)
-            print(f"  {filename}: {file_info['sha256']} ({file_info['size']} bytes)")
-
         # Write per-version manifest.json.
         manifest = {
             "id": model_id,

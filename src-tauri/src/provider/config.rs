@@ -168,5 +168,8 @@ pub(crate) fn provider_key_name(provider: &ProviderId) -> &'static str {
 
 /// Build the SQLite key for a provider config field.
 pub fn config_key(provider: ProviderId, field: &str) -> String {
+    // Sanitize field to prevent dot injection that would make the key
+    // ambiguous on read-back (e.g. "endpoint.old" → "provider.openai.endpoint.old").
+    let field = field.replace('.', "_");
     format!("provider.{}.{}", provider_key_name(&provider), field)
 }

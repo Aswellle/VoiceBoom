@@ -3,7 +3,7 @@
 // Implements the Phase 2 spec: registry parsing, download progress tracking,
 // atomic install via .staging, and active.json version management.
 //
-// Directory layout (per spec section 5):
+// Directory layout (spec section 5):
 //   %LOCALAPPDATA%\VoiceBoom\models\            (Windows)
 //   ~/Library/Application Support/VoiceBoom/models/  (macOS)
 //     ├── sensevoice/
@@ -21,7 +21,9 @@ pub mod verifier;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::Duration;
 
+use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use tokio::sync::RwLock;
 
@@ -109,9 +111,20 @@ pub struct ModelManager {
     registry: ModelRegistry,
     /// Currently in-flight downloads, keyed by model id.
     downloads: Arc<RwLock<HashMap<String, DownloadHandle>>>,
+    /// Shared HTTP client for model downloads (connection reuse).
+    http_client: Client,
 }
 
 impl ModelManager {
+    /// Create a shared HTTP client for model downloads.
+    fn build_http_client() -> Client {
+        Client::builder()
+            .timeout(Duration::from_secs(60))
+            .redirect(reqwest::redirect::Policy::limited(10))
+            .build()
+            .expect("Failed to build HTTP client")
+    }
+
     /// Create a manager. `models_dir` is created if missing.
     pub fn new(models_dir: PathBuf, registry: ModelRegistry) -> Self {
         std::fs::create_dir_all(&models_dir).ok();
@@ -119,10 +132,12 @@ impl ModelManager {
             models_dir,
             registry,
             downloads: Arc::new(RwLock::new(HashMap::new())),
+            http_client: Self::build_http_client(),
         }
     }
 
     /// Create a manager with an embedded registry (bundled at compile time).
+    /// `models_dir` will be set later via `init_models_dir` during app setup.
     pub fn new_embedded(models_dir: PathBuf) -> Self {
         let registry = Self::embedded_registry();
         std::fs::create_dir_all(&models_dir).ok();
@@ -130,6 +145,7 @@ impl ModelManager {
             models_dir,
             registry,
             downloads: Arc::new(RwLock::new(HashMap::new())),
+            http_client: Self::build_http_client(),
         }
     }
 
@@ -265,6 +281,11 @@ impl ModelManager {
 
     pub fn downloads(&self) -> Arc<RwLock<HashMap<String, DownloadHandle>>> {
         self.downloads.clone()
+    }
+
+    /// Shared HTTP client for model downloads (connection reuse).
+    pub fn http_client(&self) -> &Client {
+        &self.http_client
     }
 }
 

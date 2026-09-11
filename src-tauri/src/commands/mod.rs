@@ -1125,7 +1125,7 @@ pub async fn download_model(
         );
     });
 
-    let result = download(&info.archive.url, &archive_path, &handle, Some(progress_cb)).await;
+    let result = download(mgr.http_client(), &info.archive.url, &archive_path, &handle, Some(progress_cb)).await;
 
     {
         let mut downloads = downloads_arc.write().await;
