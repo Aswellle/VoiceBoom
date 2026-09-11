@@ -5,8 +5,14 @@ on:
     tags:
       - "v*.*.*"
 
-  workflow_dispatch:
 
+  workflow_dispatch:
+    inputs:
+      build_offline:
+        description: "Also build the full offline application bundle (includes SenseVoice model)"
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: write
 
@@ -243,18 +249,140 @@ jobs:
           retention-days: 14
 
   # ------------------------------------------------------------
-  # 3. Publish one atomic Release
+  # 3. Optional full offline build (includes SenseVoice model)
+  # ------------------------------------------------------------
+  build-offline:
+    name: Build ${{ matrix.name }}
+    if: github.event_name == 'workflow_dispatch' && inputs.build_offline == true
+    needs:
+      - validate
+      - build
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: windows-x64-offline
+            os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bundles: "msi,nsis"
+
+          - name: macos-universal-offline
+            os: macos-latest
+            target: universal-apple-darwin
+            bundles: "app,dmg"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download prepared model artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: VoiceBoom-models
+          path: model-release
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install offline model resources
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p src-tauri/resources/asr-bundle
+
+          python scripts/install-model-pack.py \
+            --archive model-release/VoiceBoom-Model-sensevoice-small-int8-v1.0.0.zip \
+            --output src-tauri/resources/asr-bundle
+
+      - name: Build offline application
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bunx tauri build \
+            --config src-tauri/tauri.offline.conf.json \
+            --target "${{ matrix.target }}" \
+            --bundles "${{ matrix.bundles }}"
+
+      - name: Collect offline release files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-artifacts
+
+          if [[ "${{ matrix.name }}" == "windows-x64-offline" ]]; then
+
+            find \
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi \
+              -maxdepth 1 \
+              -type f \
+              -name "*.msi" \
+              -exec cp {} release-artifacts/ \;
+
+            find \
+              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis \
+              -maxdepth 1 \
+              -type f \
+              -name "*.exe" \
+              -exec cp {} release-artifacts/ \;
+
+          elif [[ "${{ matrix.name }}" == "macos-universal-offline" ]]; then
+
+            find \
+              src-tauri/target/universal-apple-darwin/release/bundle/dmg \
+              -maxdepth 1 \
+              -type f \
+              -name "*.dmg" \
+              -exec cp {} release-artifacts/ \;
+
+          fi
+
+          ls -lah release-artifacts
+
+      - name: Upload offline build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: VoiceBoom-${{ matrix.name }}
+          path: |
+            release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------------
+  # 4. Publish one atomic Release
   # ------------------------------------------------------------
   publish:
     name: Publish GitHub Release
     needs:
       - validate
       - build
+      - build-offline
 
     if: |
       always() &&
       needs.validate.result == 'success' &&
-      needs.build.result == 'success'
+      needs.build.result == 'success' &&
+      (needs.build-offline.result == 'success' || needs.build-offline.result == 'skipped')
 
     runs-on: ubuntu-latest
 
@@ -337,8 +465,12 @@ jobs:
           - VoiceBoom macOS Universal DMG
           - VoiceBoom macOS Universal App ZIP
 
+          ### Offline (fully self-contained, includes SenseVoice model)
+          - VoiceBoom Windows x64 offline installer
+          - VoiceBoom macOS Universal offline DMG
+          - Built on demand via workflow_dispatch
+
           ## Integrity
-          See SHA256SUMS.txt.
 
           Commit: ${GITHUB_SHA}
           EOF2

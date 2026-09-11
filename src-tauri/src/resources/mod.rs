@@ -12,6 +12,49 @@ pub enum ResourceEngine {
     SenseVoice,
 }
 
+/// Distribution flavor (spec section 49).
+///
+/// Controls first-run behavior, model provisioning, UI wording, and telemetry.
+/// Using an enum instead of scattered `if offline` checks keeps the codebase
+/// clean when adding future flavors (Enterprise, Beta, Dev).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DistributionFlavor {
+    /// Standard: model downloaded on first use.
+    Standard,
+    /// Offline: model bundled in the installer.
+    Offline,
+    /// Portable: model loaded from directory next to the EXE.
+    Portable,
+}
+
+impl DistributionFlavor {
+    /// Detect the flavor at runtime based on whether bundled resources exist.
+    pub fn detect(bundled_asr_exists: bool, portable_models_exist: bool) -> Self {
+        if bundled_asr_exists {
+            Self::Offline
+        } else if portable_models_exist {
+            Self::Portable
+        } else {
+            Self::Standard
+        }
+    }
+
+    /// Whether this flavor bundles the model (no download needed on first run).
+    pub fn model_bundled(&self) -> bool {
+        matches!(self, DistributionFlavor::Offline)
+    }
+
+    /// User-facing label for the flavor.
+    pub fn display_name(&self) -> &'static str {
+        match self {
+            DistributionFlavor::Standard => "标准版",
+            DistributionFlavor::Offline => "离线版",
+            DistributionFlavor::Portable => "便携版",
+        }
+    }
+}
+
 impl ResourceEngine {
     pub fn as_str(&self) -> &'static str {
         match self {
@@ -298,4 +341,47 @@ fn find_in_dirs(dirs: &[std::path::PathBuf], filename: &str) -> Option<std::path
 pub fn ensure_bundled_resources(_app: &tauri::AppHandle) -> anyhow::Result<()> {
     // sherpa-onnx models are statically bundled in asr-bundle/, no extraction needed
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_distribution_flavor_detect() {
+        // Bundled ASR exists → Offline.
+        assert_eq!(
+            DistributionFlavor::detect(true, false),
+            DistributionFlavor::Offline
+        );
+        // No bundled, but portable models → Portable.
+        assert_eq!(
+            DistributionFlavor::detect(false, true),
+            DistributionFlavor::Portable
+        );
+        // Neither → Standard.
+        assert_eq!(
+            DistributionFlavor::detect(false, false),
+            DistributionFlavor::Standard
+        );
+        // Bundled takes priority over portable.
+        assert_eq!(
+            DistributionFlavor::detect(true, true),
+            DistributionFlavor::Offline
+        );
+    }
+
+    #[test]
+    fn test_distribution_flavor_model_bundled() {
+        assert!(DistributionFlavor::Offline.model_bundled());
+        assert!(!DistributionFlavor::Standard.model_bundled());
+        assert!(!DistributionFlavor::Portable.model_bundled());
+    }
+
+    #[test]
+    fn test_distribution_flavor_display_name() {
+        assert_eq!(DistributionFlavor::Standard.display_name(), "标准版");
+        assert_eq!(DistributionFlavor::Offline.display_name(), "离线版");
+        assert_eq!(DistributionFlavor::Portable.display_name(), "便携版");
+    }
 }
