@@ -90,6 +90,8 @@ if [[ -e "$OUT_APP" ]]; then
     exit 1
 fi
 
+mkdir -p "$(dirname "$OUT_APP")"
+
 cp -R "$ARM_APP" "$OUT_APP"
 OUT_BIN="$OUT_APP/Contents/MacOS/$EXECUTABLE"
 
