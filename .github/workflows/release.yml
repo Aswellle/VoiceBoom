@@ -201,13 +201,13 @@ jobs:
           retention-days: 14
 
   # ------------------------------------------------------------
-  # 3. Build macOS ARM64 (native on M1 runner)
+  # 3. Build macOS ARM64 (native on arm64 runner)
   # ------------------------------------------------------------
   build-macos-arm64:
     name: Build macOS arm64
     needs: validate
 
-    runs-on: macos-latest
+    runs-on: macos-15
 
     steps:
       - name: Checkout
@@ -231,7 +231,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build arm64
+      - name: Build macOS arm64
         shell: bash
         run: |
           set -euo pipefail
@@ -240,32 +240,73 @@ jobs:
             --target aarch64-apple-darwin \
             --bundles app
 
-      - name: Collect .app
+      - name: Locate and validate app
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p release-artifacts
+          APP_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle/macos"
 
-          APP=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
-            -maxdepth 1 -name "*.app" -print -quit)
+          APP=$(find "$APP_DIR" \
+            -mindepth 1 \
+            -maxdepth 1 \
+            -type d \
+            -name "VoiceBoom.app" \
+            -print -quit)
 
-          if [[ -z "$APP" ]]; then
-            echo "No .app found for arm64"
-            find src-tauri/target/aarch64-apple-darwin/release -type f
-            exit 1
-          fi
+          test -n "$APP"
+          test -d "$APP/Contents"
+          test -f "$APP/Contents/Info.plist"
+          test -d "$APP/Contents/MacOS"
 
-          echo "Found app: $APP"
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$APP" \
-            "release-artifacts/VoiceBoom-macOS-arm64.app.zip"
+          echo "APP=$APP" >> "$GITHUB_ENV"
 
-      - name: Upload arm64 artifacts
+          echo "=== arm64 app ==="
+          echo "$APP"
+
+          find "$APP" -maxdepth 3 -print
+
+      - name: Validate executable
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTABLE=$(/usr/libexec/PlistBuddy \
+            -c "Print :CFBundleExecutable" \
+            "$APP/Contents/Info.plist")
+
+          test -n "$EXECUTABLE"
+          test -f "$APP/Contents/MacOS/$EXECUTABLE"
+
+          echo "Executable: $EXECUTABLE"
+          file "$APP/Contents/MacOS/$EXECUTABLE"
+          lipo -info "$APP/Contents/MacOS/$EXECUTABLE" || true
+
+      - name: Package app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-intermediate
+
+          APP_PARENT="$(dirname "$APP")"
+          APP_NAME="$(basename "$APP")"
+
+          tar \
+            -C "$APP_PARENT" \
+            -czf \
+            "release-intermediate/VoiceBoom-macos-arm64-appbundle.tar.gz" \
+            "$APP_NAME"
+
+          tar -tzf \
+            "release-intermediate/VoiceBoom-macos-arm64-appbundle.tar.gz" \
+            | head -40
+
+      - name: Upload macOS arm64 app bundle
         uses: actions/upload-artifact@v4
         with:
-          name: voiceboom-macos-arm64
-          path: release-artifacts/*
+          name: VoiceBoom-macos-arm64-appbundle
+          path: release-intermediate/VoiceBoom-macos-arm64-appbundle.tar.gz
           if-no-files-found: error
           retention-days: 14
 
@@ -300,7 +341,7 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Build x86_64
+      - name: Build macOS x86_64
         shell: bash
         run: |
           set -euo pipefail
@@ -309,37 +350,65 @@ jobs:
             --target x86_64-apple-darwin \
             --bundles app
 
-      - name: Collect .app
+      - name: Locate and validate app
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p release-artifacts
+          APP_DIR="src-tauri/target/x86_64-apple-darwin/release/bundle/macos"
 
-          APP=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
-            -maxdepth 1 -name "*.app" -print -quit)
+          APP="$APP_DIR/VoiceBoom.app"
 
-          if [[ -z "$APP" ]]; then
-            echo "No .app found for x86_64"
-            find src-tauri/target/x86_64-apple-darwin/release -type f
-            exit 1
-          fi
+          test -d "$APP"
+          test -f "$APP/Contents/Info.plist"
+          test -d "$APP/Contents/MacOS"
 
-          echo "Found app: $APP"
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$APP" \
-            "release-artifacts/VoiceBoom-macOS-x64.app.zip"
+          echo "APP=$APP" >> "$GITHUB_ENV"
 
-      - name: Upload x64 artifacts
+          echo "=== x86_64 app ==="
+          echo "$APP"
+
+          find "$APP" -maxdepth 3 -print
+
+      - name: Validate executable
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          EXECUTABLE=$(/usr/libexec/PlistBuddy \
+            -c "Print :CFBundleExecutable" \
+            "$APP/Contents/Info.plist")
+
+          test -n "$EXECUTABLE"
+          test -f "$APP/Contents/MacOS/$EXECUTABLE"
+
+          echo "Executable: $EXECUTABLE"
+          file "$APP/Contents/MacOS/$EXECUTABLE"
+          lipo -info "$APP/Contents/MacOS/$EXECUTABLE" || true
+
+      - name: Package app bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-intermediate
+
+          tar \
+            -C "$(dirname "$APP")" \
+            -czf \
+            "release-intermediate/VoiceBoom-macos-x64-appbundle.tar.gz" \
+            "VoiceBoom.app"
+
+      - name: Upload macOS x86_64 app bundle
         uses: actions/upload-artifact@v4
         with:
-          name: voiceboom-macos-x64
-          path: release-artifacts/*
+          name: VoiceBoom-macos-x64-appbundle
+          path: release-intermediate/VoiceBoom-macos-x64-appbundle.tar.gz
           if-no-files-found: error
           retention-days: 14
 
   # ------------------------------------------------------------
-  # 5. Merge macOS Universal (lipo + sign + DMG)
+  # 5. Merge macOS Universal (lipo + verify + DMG)
   # ------------------------------------------------------------
   merge-macos-universal:
     name: Create macOS Universal
@@ -347,91 +416,91 @@ jobs:
       - build-macos-arm64
       - build-macos-x64
 
-    runs-on: macos-15-intel
+    runs-on: macos-15
 
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Download arm64 app
+      - name: Download arm64 app bundle
         uses: actions/download-artifact@v4
         with:
-          name: voiceboom-macos-arm64
-          path: arm64
+          name: VoiceBoom-macos-arm64-appbundle
+          path: incoming/arm64
 
-      - name: Download x64 app
+      - name: Download x86_64 app bundle
         uses: actions/download-artifact@v4
         with:
-          name: voiceboom-macos-x64
-          path: x64
+          name: VoiceBoom-macos-x64-appbundle
+          path: incoming/x86_64
 
-      - name: Extract apps
+      - name: Inspect downloaded artifacts
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p arm64.app x64.app
+          echo "=== ARM64 artifact ==="
+          find incoming/arm64 -maxdepth 3 -print
 
-          unzip -q "arm64/VoiceBoom-macOS-arm64.app.zip" -d arm64.app
-          unzip -q "x64/VoiceBoom-macOS-x64.app.zip" -d x64.app
+          echo "=== X86_64 artifact ==="
+          find incoming/x86_64 -maxdepth 3 -print
 
-          APP_ARM=$(find arm64.app -maxdepth 1 -name "*.app" -print -quit)
-          APP_X64=$(find x64.app -maxdepth 1 -name "*.app" -print -quit)
+          test -f \
+            incoming/arm64/VoiceBoom-macos-arm64-appbundle.tar.gz
 
-          echo "ARM app: $APP_ARM"
-          echo "X64 app: $APP_X64"
+          test -f \
+            incoming/x86_64/VoiceBoom-macos-x64-appbundle.tar.gz
 
-          test -n "$APP_ARM"
-          test -n "$APP_X64"
-
-      - name: Lipo universal binary
+      - name: Extract app bundles
         shell: bash
         run: |
           set -euo pipefail
 
-          APP_ARM=$(find arm64.app -maxdepth 1 -name "*.app" -print -quit)
-          APP_X64=$(find x64.app -maxdepth 1 -name "*.app" -print -quit)
-          APP_NAME=$(basename "$APP_ARM")
+          rm -rf staging
+          mkdir -p staging/arm64
+          mkdir -p staging/x86_64
 
-          echo "APP_ARM=$APP_ARM"
-          echo "APP_X64=$APP_X64"
-          echo "APP_NAME=$APP_NAME"
-          echo "=== arm64.app tree ==="
-          find arm64.app -maxdepth 3 -print
-          echo "=== x64.app tree ==="
-          find x64.app -maxdepth 3 -print
+          tar -xzf \
+            incoming/arm64/VoiceBoom-macos-arm64-appbundle.tar.gz \
+            -C staging/arm64
 
-          mkdir -p release
-          cp -R "$APP_ARM" "release/$APP_NAME"
+          tar -xzf \
+            incoming/x86_64/VoiceBoom-macos-x64-appbundle.tar.gz \
+            -C staging/x86_64
 
-          UNIVERSAL_APP="release/$APP_NAME"
+          echo "=== ARM64 staging tree ==="
+          find staging/arm64 -maxdepth 4 -print
 
-          # Find the actual binary name inside Contents/MacOS
-          ARM_BIN=$(find "$APP_ARM/Contents/MacOS" -type f -print -quit)
-          X64_BIN=$(find "$APP_X64/Contents/MacOS" -type f -print -quit)
-          BIN_NAME=$(basename "$ARM_BIN")
+          echo "=== X86_64 staging tree ==="
+          find staging/x86_64 -maxdepth 4 -print
 
-          UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/$BIN_NAME"
+          test -d staging/arm64/VoiceBoom.app
+          test -d staging/x86_64/VoiceBoom.app
 
-          echo "ARM binary: $ARM_BIN"
-          echo "X64 binary: $X64_BIN"
-          echo "Universal binary: $UNIVERSAL_BIN"
+          test -f \
+            staging/arm64/VoiceBoom.app/Contents/Info.plist
 
-          lipo -create \
-            "$ARM_BIN" \
-            "$X64_BIN" \
-            -output "$UNIVERSAL_BIN"
+          test -f \
+            staging/x86_64/VoiceBoom.app/Contents/Info.plist
 
-          echo "==> Universal binary info:"
-          lipo -info "$UNIVERSAL_BIN"
-          file "$UNIVERSAL_BIN"
+      - name: Merge into Universal bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          chmod +x scripts/merge-macos-universal.sh
+
+          ./scripts/merge-macos-universal.sh \
+            staging/arm64/VoiceBoom.app \
+            staging/x86_64/VoiceBoom.app \
+            universal/VoiceBoom.app
 
       - name: Resign universal app
         shell: bash
         run: |
           set -euo pipefail
 
-          APP=$(find release -maxdepth 1 -name "*.app" -print -quit)
+          APP=universal/VoiceBoom.app
 
           # Ad-hoc resign (required after lipo modifies the binary)
           codesign --force --deep -s - "$APP"
@@ -439,36 +508,43 @@ jobs:
           echo "==> Signature:"
           codesign -dv "$APP" 2>&1 || true
 
+      - name: Package Universal app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release
+
+          ditto \
+            -c -k \
+            --sequesterRsrc \
+            --keepParent \
+            universal/VoiceBoom.app \
+            release/VoiceBoom-macOS-Universal.zip
+
       - name: Create DMG
         shell: bash
         run: |
           set -euo pipefail
 
-          APP=$(find release -maxdepth 1 -name "*.app" -print -quit)
-          APP_NAME=$(basename "$APP" .app)
+          mkdir -p release
 
-          mkdir -p release-artifacts
-
-          # Create DMG
           hdiutil create \
-            -volname "$APP_NAME" \
-            -srcfolder "$APP" \
+            -volname "VoiceBoom" \
+            -srcfolder universal/VoiceBoom.app \
             -ov \
             -format UDZO \
-            "release-artifacts/VoiceBoom-macOS-Universal.dmg"
+            release/VoiceBoom-macOS-Universal.dmg
 
-          # Also zip the app
-          ditto -c -k --sequesterRsrc --keepParent \
-            "$APP" \
-            "release-artifacts/VoiceBoom-macOS-Universal.zip"
+          ls -lah release
 
-          ls -lah release-artifacts
-
-      - name: Upload universal artifacts
+      - name: Upload Universal release artifacts
         uses: actions/upload-artifact@v4
         with:
           name: voiceboom-macos-universal
-          path: release-artifacts/*
+          path: |
+            release/VoiceBoom-macOS-Universal.zip
+            release/VoiceBoom-macOS-Universal.dmg
           if-no-files-found: error
           retention-days: 14
 
@@ -480,12 +556,16 @@ jobs:
     needs:
       - validate
       - build-windows
+      - build-macos-arm64
+      - build-macos-x64
       - merge-macos-universal
 
     if: |
       always() &&
       needs.validate.result == 'success' &&
       needs.build-windows.result == 'success' &&
+      needs.build-macos-arm64.result == 'success' &&
+      needs.build-macos-x64.result == 'success' &&
       needs.merge-macos-universal.result == 'success'
 
     runs-on: ubuntu-latest
