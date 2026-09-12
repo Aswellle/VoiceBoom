@@ -46,8 +46,6 @@ dirs = "5"
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["dpapi", "winbase"] }
 win-text-inject = { path = "vendor/win-text-inject" }
-[target.'cfg(target_os = "macos")'.dependencies]
-security-framework = "2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

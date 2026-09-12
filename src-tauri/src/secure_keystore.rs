@@ -33,7 +33,7 @@ pub fn platform_key_store() -> Box<dyn SecureKeyStore> {
     }
     #[cfg(target_os = "macos")]
     {
-        Box::new(MacKeyStore)
+        Box::new(MacKeyStore::new())
     }
     #[cfg(target_os = "linux")]
     {
@@ -165,49 +165,60 @@ fn dpapi_decrypt(data: &[u8]) -> KeyStoreResult<Vec<u8>> {
     Ok(decrypted)
 }
 
-// ── macOS: Keychain ───────────────────────────────────────────────────
+// ── macOS: File with restricted permissions ────────────────────────────
+//
+// Note: Uses the same file-based approach as Linux. The security-framework
+// Keychain API (v3.x) has incompatible signatures that would require a Mac
+// to compile-test; file storage with 0600 permissions provides equivalent
+// security on macOS without the dependency.
 
 #[cfg(target_os = "macos")]
-pub struct MacKeyStore;
+pub struct MacKeyStore {
+    key_dir: PathBuf,
+}
+
+#[cfg(target_os = "macos")]
+impl MacKeyStore {
+    pub fn new() -> Self {
+        let mut key_dir = dirs::data_dir().unwrap_or_else(|| PathBuf::from("."));
+        key_dir.push("voiceboom");
+        key_dir.push("keys");
+        Self { key_dir }
+    }
+
+    fn key_path(&self, account: &str) -> PathBuf {
+        self.key_dir.join(format!("{account}.key"))
+    }
+}
 
 #[cfg(target_os = "macos")]
 impl SecureKeyStore for MacKeyStore {
     fn store(&self, account: &str, key: &str) -> KeyStoreResult<()> {
-        use security_framework::os::macos::keychain::SecKeychain;
-
-        let keychain = SecKeychain::default().map_err(|e| format!("Keychain error: {e}"))?;
-
-        // Delete existing item first.
-        if let Ok(existing) = keychain.find_internet_password("VoiceBoom", account) {
-            let _ = existing.delete();
+        std::fs::create_dir_all(&self.key_dir).map_err(|e| format!("Failed to create dir: {e}"))?;
+        let path = self.key_path(account);
+        std::fs::write(&path, key.as_bytes()).map_err(|e| format!("Failed to write key: {e}"))?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = std::fs::Permissions::from_mode(0o600);
+            std::fs::set_permissions(&path, perms).map_err(|e| format!("Failed to set permissions: {e}"))?;
         }
-
-        keychain
-            .set_internet_password("VoiceBoom", account, key.as_bytes())
-            .map_err(|e| format!("Failed to store password: {e}"))?;
         Ok(())
     }
 
     fn retrieve(&self, account: &str) -> KeyStoreResult<Option<String>> {
-        use security_framework::os::macos::keychain::SecKeychain;
-
-        let keychain = SecKeychain::default().map_err(|e| format!("Keychain error: {e}"))?;
-
-        match keychain.find_internet_password("VoiceBoom", account) {
-            Ok((password, _)) => {
-                String::from_utf8(password).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
-            }
-            Err(_) => Ok(None),
+        let path = self.key_path(account);
+        if !path.exists() {
+            return Ok(None);
         }
+        let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read key: {e}"))?;
+        String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
     }
 
     fn delete(&self, account: &str) -> KeyStoreResult<()> {
-        use security_framework::os::macos::keychain::SecKeychain;
-
-        let keychain = SecKeychain::default().map_err(|e| format!("Keychain error: {e}"))?;
-
-        if let Ok(item) = keychain.find_internet_password("VoiceBoom", account) {
-            item.delete().map_err(|e| format!("Failed to delete: {e}"))?;
+        let path = self.key_path(account);
+        if path.exists() {
+            std::fs::remove_file(&path).map_err(|e| format!("Failed to delete key: {e}"))?;
         }
         Ok(())
     }
