@@ -30,7 +30,7 @@ pub fn inject(target: &InjectionTarget, text: &str) -> InjectionResult {
     let mode = crate::inject::InjectionMode::Clipboard;
     match crate::inject::inject(text, &mode) {
         crate::inject::InjectionResult::Injected => InjectionResult::Injected {
-            method: super::super::model::InjectionMethod::Clipboard,
+            method: super::super::model::InjectionMethod::ClipboardPaste,
             verified: false,
         },
         crate::inject::InjectionResult::ClipboardFallback => InjectionResult::ClipboardFallback {
