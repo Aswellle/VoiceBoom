@@ -5,14 +5,6 @@ on:
     tags:
       - "v*.*.*"
 
-
-  workflow_dispatch:
-    inputs:
-      build_offline:
-        description: "Also build the full offline application bundle (includes SenseVoice model)"
-        required: false
-        default: false
-        type: boolean
 permissions:
   contents: write
 
@@ -21,7 +13,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  BUN_VERSION: "latest"
+  BUN_VERSION: "1.2.23"
 
 jobs:
 
@@ -38,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -91,31 +83,17 @@ jobs:
           fi
 
   # ------------------------------------------------------------
-  # 2. Build platform binaries
+  # 2. Build Windows x64 (installers + portable)
   # ------------------------------------------------------------
-  build:
-    name: Build ${{ matrix.name }}
+  build-windows:
+    name: Build Windows x64
     needs: validate
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: "msi,nsis"
-          - name: macos-universal
-            os: macos-latest
-            target: universal-apple-darwin
-            targets: aarch64-apple-darwin x86_64-apple-darwin
-            bundles: "app,dmg"
-
-    runs-on: ${{ matrix.os }}
+    runs-on: windows-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -125,7 +103,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.targets || matrix.target }}
+          targets: x86_64-pc-windows-msvc
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -134,177 +112,106 @@ jobs:
 
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
-      - name: Build application
-        shell: bash
-        run: |
-          set -euo pipefail
 
-          if [[ "${{ matrix.name }}" == "macos-universal" ]]; then
-            # Rust 1.82+ removed the universal-apple-darwin target.
-            # Build each arch separately, then lipo them together.
-            for ARCH in aarch64-apple-darwin x86_64-apple-darwin; do
-              echo "==> Building $ARCH"
-              bunx tauri build \
-                --target "$ARCH" \
-                --bundles app
-            done
-
-            # Locate the two .app bundles and merge their binaries.
-            APP_ARM=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
-              -maxdepth 1 -name "*.app" -print -quit)
-            APP_X64=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
-              -maxdepth 1 -name "*.app" -print -quit)
-            BIN_ARM="$APP_ARM/Contents/MacOS/VoiceBoom"
-            BIN_X64="$APP_X64/Contents/MacOS/VoiceBoom"
-
-            mkdir -p src-tauri/target/universal-apple-darwin/release/bundle/macos
-            cp -R "$APP_ARM" src-tauri/target/universal-apple-darwin/release/bundle/macos/
-            UNIVERSAL_APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/$(basename "$APP_ARM")
-            UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
-
-            lipo -create "$BIN_ARM" "$BIN_X64" -output "$UNIVERSAL_BIN"
-            echo "==> Universal binary:"
-            lipo -info "$UNIVERSAL_BIN"
-            echo "==> Skipping DMG: use .app zip instead"
-          else
-            bunx tauri build \
-              --target "${{ matrix.target }}" \
-              --bundles "${{ matrix.bundles }}"
-          fi
-
-      - name: Verify macOS Universal binary
-        if: matrix.name == 'macos-universal'
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          APP=$(find \
-            src-tauri/target/universal-apple-darwin/release/bundle/macos \
-            -maxdepth 1 \
-            -name "*.app" \
-            -print -quit)
-
-          BIN="$APP/Contents/MacOS/VoiceBoom"
-
-          test -f "$BIN"
-
-          lipo -info "$BIN"
-          file "$BIN"
-
-      - name: Verify Windows binary exists
-        if: matrix.name == 'windows-x64'
+      - name: Build Tauri installers (MSI + NSIS)
         shell: pwsh
         run: |
-          $exe = Get-ChildItem `
-            "src-tauri/target/x86_64-pc-windows-msvc/release" `
-            -Filter "VoiceBoom.exe" `
-            -Recurse `
-            -ErrorAction SilentlyContinue |
-            Select-Object -First 1
+          bunx tauri build `
+            --target x86_64-pc-windows-msvc `
+            --bundles msi,nsis
 
-          if (-not $exe) {
-            throw "VoiceBoom.exe not found"
+      - name: Build portable executable
+        shell: pwsh
+        run: |
+          cargo build `
+            --manifest-path src-tauri/Cargo.toml `
+            --release `
+            --target x86_64-pc-windows-msvc
+
+          $exe = "src-tauri/target/x86_64-pc-windows-msvc/release/voiceboom.exe"
+
+          if (-not (Test-Path $exe)) {
+            Write-Host "=== EXE INVENTORY ==="
+            Get-ChildItem `
+              "src-tauri/target" `
+              -Filter "*.exe" `
+              -Recurse `
+              -File |
+              ForEach-Object {
+                Write-Host $_.FullName
+              }
+            throw "Portable executable not found: $exe"
           }
 
-      - name: Collect release files
-        shell: bash
+          New-Item -ItemType Directory `
+            -Force `
+            -Path release-artifacts | Out-Null
+
+          Copy-Item `
+            $exe `
+            "release-artifacts/VoiceBoom-Windows-x64-Portable.exe"
+
+      - name: Collect installers and portable
+        shell: pwsh
         run: |
-          set -euo pipefail
+          $dst = "release-artifacts"
+          New-Item -ItemType Directory -Force -Path $dst | Out-Null
 
-          mkdir -p release-artifacts
+          # MSI
+          Get-ChildItem `
+            "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi" `
+            -Filter "*.msi" `
+            -File |
+            ForEach-Object {
+              Copy-Item $_.FullName "$dst/$($_.Name)"
+            }
 
-          if [[ "${{ matrix.name }}" == "windows-x64" ]]; then
+          # NSIS
+          Get-ChildItem `
+            "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" `
+            -Filter "*.exe" `
+            -File |
+            ForEach-Object {
+              Copy-Item $_.FullName "$dst/$($_.Name)"
+            }
 
-            find \
-              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi \
-              -maxdepth 1 \
-              -type f \
-              -name "*.msi" \
-              -exec cp {} release-artifacts/ \;
+          # Portable ZIP
+          $portableExe = "$dst/VoiceBoom-Windows-x64-Portable.exe"
+          if (Test-Path $portableExe) {
+            $portableDir = "$env:TEMP/voiceboom-portable"
+            if (Test-Path $portableDir) { Remove-Item $portableDir -Recurse -Force }
+            New-Item -ItemType Directory -Force -Path $portableDir | Out-Null
+            Copy-Item $portableExe "$portableDir/VoiceBoom.exe"
+            Compress-Archive `
+              -Path "$portableDir/*" `
+              -DestinationPath "$dst/VoiceBoom-Windows-x64-Portable.zip" `
+              -Force
+          }
 
-            find \
-              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis \
-              -maxdepth 1 \
-              -type f \
-              -name "*.exe" \
-              -exec cp {} release-artifacts/ \;
+          Get-ChildItem $dst | ForEach-Object {
+            Write-Host "$($_.Name)  $($_.Length) bytes"
+          }
 
-            # Portable binary; confirm at runtime that WebView2 is available.
-            find \
-              src-tauri/target/x86_64-pc-windows-msvc/release \
-              -maxdepth 1 \
-              -type f \
-              -name "VoiceBoom.exe" \
-              -exec cp {} release-artifacts/VoiceBoom-Windows-x64-Portable.exe \;
-
-            cd release-artifacts
-            7z a VoiceBoom-Windows-x64-Portable.zip \
-              VoiceBoom-Windows-x64-Portable.exe
-            rm VoiceBoom-Windows-x64-Portable.exe
-            cd ..
-
-          elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
-
-            APP=$(find \
-              src-tauri/target/universal-apple-darwin/release/bundle/macos \
-              -maxdepth 1 \
-              -name "*.app" \
-              -print -quit)
-
-            if [[ -n "$APP" ]]; then
-              ditto -c -k --sequesterRsrc --keepParent \
-                "$APP" \
-                "release-artifacts/VoiceBoom-macOS-Universal.zip"
-            fi
-
-          fi
-
-          ls -lah release-artifacts
-
-      - name: Upload build artifacts
+      - name: Upload Windows artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceBoom-${{ matrix.name }}
+          name: voiceboom-windows-x64
           path: release-artifacts/*
           if-no-files-found: error
           retention-days: 14
 
   # ------------------------------------------------------------
-  # 3. Optional full offline build (includes SenseVoice model)
+  # 3. Build macOS ARM64 (native on M1 runner)
   # ------------------------------------------------------------
-  build-offline:
-    name: Build ${{ matrix.name }}
-    if: github.event_name == 'workflow_dispatch' && inputs.build_offline == true
-    needs:
-      - validate
-      - build
+  build-macos-arm64:
+    name: Build macOS arm64
+    needs: validate
 
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: windows-x64-offline
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bundles: "msi,nsis"
-
-          - name: macos-universal-offline
-            os: macos-latest
-            target: universal-apple-darwin
-            targets: aarch64-apple-darwin x86_64-apple-darwin
-            bundles: "app,dmg"
-
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download prepared model artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: VoiceBoom-models
-          path: model-release
+        uses: actions/checkout@v5
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -314,7 +221,7 @@ jobs:
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.targets || matrix.target }}
+          targets: aarch64-apple-darwin
 
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
@@ -324,118 +231,247 @@ jobs:
       - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
-      - name: Install offline model resources
+      - name: Build arm64
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p src-tauri/resources/asr-bundle
+          bunx tauri build \
+            --target aarch64-apple-darwin \
+            --bundles app
 
-          python scripts/install-model-pack.py \
-            --archive model-release/VoiceBoom-Model-sensevoice-small-int8-v1.0.0.zip \
-            --output src-tauri/resources/asr-bundle
-
-      - name: Build offline application
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          if [[ "${{ matrix.name }}" == "macos-universal-offline" ]]; then
-            for ARCH in aarch64-apple-darwin x86_64-apple-darwin; do
-              echo "==> Building $ARCH"
-              bunx tauri build \
-                --config src-tauri/tauri.offline.conf.json \
-                --target "$ARCH" \
-                --bundles app
-            done
-
-            APP_ARM=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
-              -maxdepth 1 -name "*.app" -print -quit)
-            APP_X64=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
-              -maxdepth 1 -name "*.app" -print -quit)
-            BIN_ARM="$APP_ARM/Contents/MacOS/VoiceBoom"
-            BIN_X64="$APP_X64/Contents/MacOS/VoiceBoom"
-
-            mkdir -p src-tauri/target/universal-apple-darwin/release/bundle/macos
-            cp -R "$APP_ARM" src-tauri/target/universal-apple-darwin/release/bundle/macos/
-            UNIVERSAL_APP=src-tauri/target/universal-apple-darwin/release/bundle/macos/$(basename "$APP_ARM")
-            UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
-
-            lipo -create "$BIN_ARM" "$BIN_X64" -output "$UNIVERSAL_BIN"
-            echo "==> Universal binary:"
-            lipo -info "$UNIVERSAL_BIN"
-            echo "==> Skipping DMG: use .app zip instead"
-          else
-            bunx tauri build \
-              --config src-tauri/tauri.offline.conf.json \
-              --target "${{ matrix.target }}" \
-              --bundles "${{ matrix.bundles }}"
-          fi
-      - name: Collect offline release files
+      - name: Collect .app
         shell: bash
         run: |
           set -euo pipefail
 
           mkdir -p release-artifacts
 
-          if [[ "${{ matrix.name }}" == "windows-x64-offline" ]]; then
+          APP=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name "*.app" -print -quit)
 
-            find \
-              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi \
-              -maxdepth 1 \
-              -type f \
-              -name "*.msi" \
-              -exec cp {} release-artifacts/ \;
-
-            find \
-              src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis \
-              -maxdepth 1 \
-              -type f \
-              -name "*.exe" \
-              -exec cp {} release-artifacts/ \;
-
-          elif [[ "${{ matrix.name }}" == "macos-universal-offline" ]]; then
-
-            APP=$(find \
-              src-tauri/target/universal-apple-darwin/release/bundle/macos \
-              -maxdepth 1 \
-              -name "*.app" \
-              -print -quit)
-
-            if [[ -n "$APP" ]]; then
-              ditto -c -k --sequesterRsrc --keepParent \
-                "$APP" \
-                "release-artifacts/VoiceBoom-macOS-Universal-Offline.zip"
-            fi
-
+          if [[ -z "$APP" ]]; then
+            echo "No .app found for arm64"
+            find src-tauri/target/aarch64-apple-darwin/release -type f
+            exit 1
           fi
 
-          ls -lah release-artifacts
+          echo "Found app: $APP"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" \
+            "release-artifacts/VoiceBoom-macOS-arm64.app.zip"
 
-      - name: Upload offline build artifacts
+      - name: Upload arm64 artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: VoiceBoom-${{ matrix.name }}
-          path: |
-            release-artifacts/*
+          name: voiceboom-macos-arm64
+          path: release-artifacts/*
           if-no-files-found: error
           retention-days: 14
 
   # ------------------------------------------------------------
-  # 4. Publish one atomic Release
+  # 4. Build macOS x86_64 (native on Intel runner)
+  # ------------------------------------------------------------
+  build-macos-x64:
+    name: Build macOS x86_64
+    needs: validate
+
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-apple-darwin
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build x86_64
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          bunx tauri build \
+            --target x86_64-apple-darwin \
+            --bundles app
+
+      - name: Collect .app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p release-artifacts
+
+          APP=$(find src-tauri/target/x86_64-apple-darwin/release/bundle/macos \
+            -maxdepth 1 -name "*.app" -print -quit)
+
+          if [[ -z "$APP" ]]; then
+            echo "No .app found for x86_64"
+            find src-tauri/target/x86_64-apple-darwin/release -type f
+            exit 1
+          fi
+
+          echo "Found app: $APP"
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" \
+            "release-artifacts/VoiceBoom-macOS-x64.app.zip"
+
+      - name: Upload x64 artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: voiceboom-macos-x64
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------------
+  # 5. Merge macOS Universal (lipo + sign + DMG)
+  # ------------------------------------------------------------
+  merge-macos-universal:
+    name: Create macOS Universal
+    needs:
+      - build-macos-arm64
+      - build-macos-x64
+
+    runs-on: macos-15-intel
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download arm64 app
+        uses: actions/download-artifact@v4
+        with:
+          name: voiceboom-macos-arm64
+          path: arm64
+
+      - name: Download x64 app
+        uses: actions/download-artifact@v4
+        with:
+          name: voiceboom-macos-x64
+          path: x64
+
+      - name: Extract apps
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p arm64.app x64.app
+
+          unzip -q "arm64/VoiceBoom-macOS-arm64.app.zip" -d arm64.app
+          unzip -q "x64/VoiceBoom-macOS-x64.app.zip" -d x64.app
+
+          APP_ARM=$(find arm64.app -maxdepth 1 -name "*.app" -print -quit)
+          APP_X64=$(find x64.app -maxdepth 1 -name "*.app" -print -quit)
+
+          echo "ARM app: $APP_ARM"
+          echo "X64 app: $APP_X64"
+
+          test -n "$APP_ARM"
+          test -n "$APP_X64"
+
+      - name: Lipo universal binary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_ARM=$(find arm64.app -maxdepth 1 -name "*.app" -print -quit)
+          APP_X64=$(find x64.app -maxdepth 1 -name "*.app" -print -quit)
+          APP_NAME=$(basename "$APP_ARM")
+
+          mkdir -p release
+          cp -R "$APP_ARM" "release/$APP_NAME"
+
+          UNIVERSAL_APP="release/$APP_NAME"
+          UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
+
+          ARM_BIN="$APP_ARM/Contents/MacOS/VoiceBoom"
+          X64_BIN="$APP_X64/Contents/MacOS/VoiceBoom"
+
+          lipo -create \
+            "$ARM_BIN" \
+            "$X64_BIN" \
+            -output "$UNIVERSAL_BIN"
+
+          echo "==> Universal binary info:"
+          lipo -info "$UNIVERSAL_BIN"
+          file "$UNIVERSAL_BIN"
+
+      - name: Resign universal app
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP=$(find release -maxdepth 1 -name "*.app" -print -quit)
+
+          # Ad-hoc resign (required after lipo modifies the binary)
+          codesign --force --deep -s - "$APP"
+
+          echo "==> Signature:"
+          codesign -dv "$APP" 2>&1 || true
+
+      - name: Create DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP=$(find release -maxdepth 1 -name "*.app" -print -quit)
+          APP_NAME=$(basename "$APP" .app)
+
+          mkdir -p release-artifacts
+
+          # Create DMG
+          hdiutil create \
+            -volname "$APP_NAME" \
+            -srcfolder "$APP" \
+            -ov \
+            -format UDZO \
+            "release-artifacts/VoiceBoom-macOS-Universal.dmg"
+
+          # Also zip the app
+          ditto -c -k --sequesterRsrc --keepParent \
+            "$APP" \
+            "release-artifacts/VoiceBoom-macOS-Universal.zip"
+
+          ls -lah release-artifacts
+
+      - name: Upload universal artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: voiceboom-macos-universal
+          path: release-artifacts/*
+          if-no-files-found: error
+          retention-days: 14
+
+  # ------------------------------------------------------------
+  # 6. Publish one atomic Release
   # ------------------------------------------------------------
   publish:
     name: Publish GitHub Release
     needs:
       - validate
-      - build
-      - build-offline
+      - build-windows
+      - merge-macos-universal
 
     if: |
       always() &&
       needs.validate.result == 'success' &&
-      needs.build.result == 'success' &&
-      (needs.build-offline.result == 'success' || needs.build-offline.result == 'skipped')
+      needs.build-windows.result == 'success' &&
+      needs.merge-macos-universal.result == 'success'
 
     runs-on: ubuntu-latest
 
@@ -456,10 +492,9 @@ jobs:
             -type f \
             \( \
               -name "*.msi" -o \
-              -name "*.exe" -o \
-              -name "*.dmg" -o \
+              -name "*Setup.exe" -o \
               -name "*.zip" -o \
-              -name "*.json" \
+              -name "*.dmg" \
             \) \
             -exec cp {} upload/ \;
 
@@ -512,16 +547,15 @@ jobs:
           ### Windows
           - VoiceBoom Windows x64 installer (MSI)
           - VoiceBoom Windows x64 installer (NSIS)
-          - VoiceBoom Windows x64 portable
+          - VoiceBoom Windows x64 Portable ZIP (requires WebView2 Runtime)
 
           ### macOS
-          - VoiceBoom macOS Universal DMG
+          - VoiceBoom macOS Universal DMG (Apple Silicon + Intel)
           - VoiceBoom macOS Universal App ZIP
 
-          ### Offline (fully self-contained, includes SenseVoice model)
-          - VoiceBoom Windows x64 offline installer
-          - VoiceBoom macOS Universal offline DMG
-          - Built on demand via workflow_dispatch
+          ## System Requirements
+          - Windows 10/11 with WebView2 Runtime
+          - macOS 12.0+ (Monterey)
 
           ## Integrity
 
