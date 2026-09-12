@@ -3,7 +3,7 @@
   "channel": "stable",
   "models": [
     {
-      "id": "sensevoice-small-int8",
+      "id": "sensevoice-small-gguf",
       "engine": "sensevoice",
       "version": "1.0.0",
       "languages": [
@@ -15,29 +15,29 @@
       ],
       "platforms": [
         "windows-x86_64",
-        "darwin-x86_64",
-        "darwin-aarch64"
+        "darwin-aarch64",
+        "darwin-x86_64"
       ],
       "archive": {
-        "url": "https://github.com/Aswellle/VoiceBoom/releases/download/models-sensevoice-v1.0.0/VoiceBoom-Model-sensevoice-small-int8-v1.0.0.zip",
-        "sha256": "REPLACE_WITH_REAL_SHA256",
-        "size": 250000000
+        "url": "https://github.com/Aswellle/VoiceBoom/releases/download/models-sensevoice-v1.0.0/VoiceBoom-Model-sensevoice-small-gguf-v1.0.0.zip",
+        "sha256": "ARCHIVE_SHA256_PLACEHOLDER",
+        "size": 420000000
       },
       "files": [
         {
-          "path": "sensevoice/1.0.0/model.int8.onnx",
-          "size": 0,
-          "sha256": "REPLACE"
+          "path": "sensevoice/1.0.0/ggml-base.bin",
+          "size": 147951465,
+          "sha256": "60ed5bc3dd14eea856493d334349b405782ddcaf0028d4b5df4088345fba2efe"
         },
         {
-          "path": "sensevoice/1.0.0/tokens.txt",
-          "size": 0,
-          "sha256": "REPLACE"
+          "path": "sensevoice/1.0.0/fsmn-vad.gguf",
+          "size": 1720512,
+          "sha256": "1270f2559c495f4e7b6e739541151027d360761a3fda43fc147034f5719f5479"
         },
         {
-          "path": "sensevoice/1.0.0/silero_vad.onnx",
-          "size": 0,
-          "sha256": "REPLACE"
+          "path": "sensevoice/1.0.0/sensevoice-small-q8.gguf",
+          "size": 254208320,
+          "sha256": "4ae45c94422de949b387e2e0fb10d7e14e4c42c69db30c3444ecc7d4b844b7c5"
         }
       ]
     }
