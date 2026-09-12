@@ -397,10 +397,17 @@ jobs:
           cp -R "$APP_ARM" "release/$APP_NAME"
 
           UNIVERSAL_APP="release/$APP_NAME"
-          UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/VoiceBoom"
 
-          ARM_BIN="$APP_ARM/Contents/MacOS/VoiceBoom"
-          X64_BIN="$APP_X64/Contents/MacOS/VoiceBoom"
+          # Find the actual binary name inside Contents/MacOS
+          ARM_BIN=$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 -print -quit)
+          X64_BIN=$(find "$APP_X64/Contents/MacOS" -type f -perm +111 -print -quit)
+          BIN_NAME=$(basename "$ARM_BIN")
+
+          UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/$BIN_NAME"
+
+          echo "ARM binary: $ARM_BIN"
+          echo "X64 binary: $X64_BIN"
+          echo "Universal binary: $UNIVERSAL_BIN"
 
           lipo -create \
             "$ARM_BIN" \
