@@ -27,15 +27,10 @@ pub enum InjectionMode {
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum InjectionResult {
-    /// Successfully injected into the focused field.
     Injected,
-    /// Injected via clipboard but could not confirm (e.g., UIPI blocked readback).
     ClipboardFallback,
-    /// Permission denied — target is an elevated app or UIPI blocked injection.
     PermissionDenied,
-    /// No focused input field available.
     TargetUnavailable,
-    /// Injection failed for another reason.
     Failed { reason: String },
 }
 
@@ -71,30 +66,25 @@ impl InjectionResult {
 // ---------------------------------------------------------------------------
 // Shared Enigo instance (used by Typing mode on all platforms, and as the
 // clipboard-paste driver on non-Windows).
+//
+// Note: enigo::Enigo is not Send on macOS (CoreGraphics handle), so we cannot
+// use a `static`. Create on demand instead — Enigo construction is cheap.
 // ---------------------------------------------------------------------------
-static ENIGO: LazyLock<Mutex<Option<enigo::Enigo>>> = LazyLock::new(|| {
+
+fn new_enigo() -> Option<enigo::Enigo> {
     match enigo::Enigo::new(&enigo::Settings::default()) {
         Ok(e) => {
             log::info!("Enigo initialised for text injection");
-            Mutex::new(Some(e))
+            Some(e)
         }
         Err(e) => {
             log::warn!("Enigo init failed: {e}");
-            Mutex::new(None)
+            None
         }
     }
-});
-
+}
 fn enigo_typing(text: &str) -> InjectionResult {
-    let mut guard = match ENIGO.lock() {
-        Ok(g) => g,
-        Err(e) => {
-            return InjectionResult::Failed {
-                reason: format!("Enigo lock error: {e}"),
-            }
-        }
-    };
-    let enigo = match guard.as_mut() {
+    let mut enigo = match new_enigo() {
         Some(e) => e,
         None => {
             return InjectionResult::Failed {
@@ -199,15 +189,7 @@ fn fallback_inject_via_clipboard(text: &str) -> InjectionResult {
 
     // Send paste shortcut.
     {
-        let mut guard = match ENIGO.lock() {
-            Ok(g) => g,
-            Err(e) => {
-                return InjectionResult::Failed {
-                    reason: format!("Enigo lock error: {e}"),
-                }
-            }
-        };
-        let enigo = match guard.as_mut() {
+        let mut enigo = match new_enigo() {
             Some(e) => e,
             None => {
                 return InjectionResult::Failed {
@@ -215,7 +197,7 @@ fn fallback_inject_via_clipboard(text: &str) -> InjectionResult {
                 }
             }
         };
-        if let Err(e) = send_paste(enigo) {
+        if let Err(e) = send_paste(&mut enigo) {
             return InjectionResult::Failed {
                 reason: format!("Paste shortcut failed: {e}"),
             };

@@ -246,6 +246,10 @@ jobs:
           elif [[ "${{ matrix.name }}" == "macos-universal" ]]; then
 
             APP=$(find \
+              src-tauri/target/universal-apple-darwin/release/bundle/macos \
+              -maxdepth 1 \
+              -name "*.app" \
+              -print -quit)
 
             if [[ -n "$APP" ]]; then
               ditto -c -k --sequesterRsrc --keepParent \
