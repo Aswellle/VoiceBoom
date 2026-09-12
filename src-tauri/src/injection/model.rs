@@ -155,6 +155,8 @@ pub enum InjectionResult {
     DuplicateIgnored,
     /// Stale session result ignored.
     StaleSession,
+    /// No focused input field available.
+    TargetUnavailable,
     /// Injection failed.
     Failed {
         reason: String,
@@ -189,6 +191,9 @@ impl InjectionResult {
             }
             InjectionResult::DuplicateIgnored => "重复注入已忽略".into(),
             InjectionResult::StaleSession => "旧会话结果已忽略".into(),
+            InjectionResult::TargetUnavailable => {
+                "没有找到可输入的焦点区域，文字已复制到剪贴板，请手动粘贴".into()
+            }
             InjectionResult::Failed { reason } => format!("注入失败: {}", reason),
         }
     }

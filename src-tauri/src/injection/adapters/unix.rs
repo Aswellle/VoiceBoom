@@ -2,7 +2,7 @@
 //!
 //! Phase 8: Platform adapter for non-Windows systems.
 
-use super::super::model::{InjectionResult, InjectionTarget, TargetValidation};
+use super::super::model::{InjectionMethod, InjectionResult, InjectionTarget, TargetValidation};
 
 /// Execute injection on macOS/Linux.
 pub fn inject(target: &InjectionTarget, text: &str) -> InjectionResult {
@@ -28,8 +28,20 @@ pub fn inject(target: &InjectionTarget, text: &str) -> InjectionResult {
 
     // Use the existing inject.rs implementation.
     let mode = crate::inject::InjectionMode::Clipboard;
-    crate::inject::inject(text, &mode)
-}
+    match crate::inject::inject(text, &mode) {
+        crate::inject::InjectionResult::Injected => InjectionResult::Injected {
+            method: super::super::model::InjectionMethod::Clipboard,
+            verified: false,
+        },
+        crate::inject::InjectionResult::ClipboardFallback => InjectionResult::ClipboardFallback {
+            reason: "已复制到剪贴板".into(),
+        },
+        crate::inject::InjectionResult::PermissionDenied => InjectionResult::PermissionDenied {
+            reason: "权限不足".into(),
+        },
+        crate::inject::InjectionResult::TargetUnavailable => InjectionResult::TargetUnavailable,
+        crate::inject::InjectionResult::Failed { reason } => InjectionResult::Failed { reason },
+    }
 
 /// Validate the target on macOS/Linux.
 fn validate_target(target: &InjectionTarget) -> TargetValidation {
