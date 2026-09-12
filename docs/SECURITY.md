@@ -1,6 +1,6 @@
 # VoiceBoom AI — 安全文档
 
-> 生成阶段：Phase 18 — 文档同步
+> 阶段：Phase 18 — 文档同步
 
 ---
 
