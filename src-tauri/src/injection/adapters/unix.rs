@@ -42,7 +42,7 @@ pub fn inject(target: &InjectionTarget, text: &str) -> InjectionResult {
         crate::inject::InjectionResult::TargetUnavailable => InjectionResult::TargetUnavailable,
         crate::inject::InjectionResult::Failed { reason } => InjectionResult::Failed { reason },
     }
-
+}
 /// Validate the target on macOS/Linux.
 fn validate_target(target: &InjectionTarget) -> TargetValidation {
     if target.is_valid() {

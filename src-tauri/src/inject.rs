@@ -10,7 +10,7 @@
 use std::io::Write;
 use std::sync::LazyLock;
 use std::sync::Mutex;
-
+use enigo::Keyboard;
 /// Injection strategies mirrored from the settings UI.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "camelCase")]
