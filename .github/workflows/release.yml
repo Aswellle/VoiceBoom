@@ -482,6 +482,17 @@ jobs:
 
           test -f \
             staging/x86_64/VoiceBoom.app/Contents/Info.plist
+      - name: Merge into Universal bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          chmod +x scripts/merge-macos-universal.sh
+
+          ./scripts/merge-macos-universal.sh \
+            staging/arm64/VoiceBoom.app \
+            staging/x86_64/VoiceBoom.app \
+            universal/VoiceBoom.app
 
       - name: Clean up intermediate files
         shell: bash
