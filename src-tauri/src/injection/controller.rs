@@ -10,7 +10,7 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use super::model::{
-    InjectionKey, InjectionMode, InjectionRequest, InjectionResult, InjectionState,
+    InjectionKey, InjectionMode, InjectionRequest, InjectionResult,
     InjectionTarget, TargetValidation,
 };
 

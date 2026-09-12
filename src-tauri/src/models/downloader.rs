@@ -10,7 +10,7 @@
 //
 // The HTTP client is passed in (not built per-download) so connections pool.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;

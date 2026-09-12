@@ -129,7 +129,7 @@ impl AudioCapture {
             // channel has limited capacity; if full, drop the incoming frame
             // (newest-drop, real-time priority — bounds memory, never blocks
             // the CPAL callback).
-            let mut send_frame = move |samples: Vec<f32>| {
+            let send_frame = move |samples: Vec<f32>| {
                 let seq = sequence_cb.fetch_add(1, Ordering::SeqCst);
                 let frame = AudioFrame {
                     sequence: seq,

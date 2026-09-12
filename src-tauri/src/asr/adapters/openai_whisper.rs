@@ -8,9 +8,9 @@ use tokio_tungstenite::connect_async;
 
 use super::super::engine_trait::{AsrConfig, AsrResult, StreamingAsrEngine};
 
+#[allow(dead_code)]
 /// OpenAI Whisper streaming adapter
 pub struct OpenaiWhisperAdapter {
-    config: Option<AsrConfig>,
     ws_sender: Option<mpsc::UnboundedSender<Vec<f32>>>,
     ws_receiver: Option<mpsc::UnboundedReceiver<AsrResult>>,
     ready: bool,

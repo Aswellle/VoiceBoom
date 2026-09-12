@@ -12,7 +12,7 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::mpsc;
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
@@ -230,7 +230,7 @@ impl AsrSession for DeepgramAdapter {
                             Ok(Message::Text(text)) => {
                                 if let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) {
                                     match parse_deepgram_event(&json) {
-                                        Some(DeepgramEvent::Partial { text, confidence }) => {
+                                        Some(DeepgramEvent::Partial { text, confidence: _ }) => {
                                             let _ = event_tx.send(AsrEvent::Partial {
                                                 text,
                                                 language: Some(lang.clone()),

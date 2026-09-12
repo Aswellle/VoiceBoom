@@ -483,17 +483,21 @@ jobs:
           test -f \
             staging/x86_64/VoiceBoom.app/Contents/Info.plist
 
-      - name: Merge into Universal bundle
+      - name: Clean up intermediate files
         shell: bash
         run: |
           set -euo pipefail
 
-          chmod +x scripts/merge-macos-universal.sh
+          echo "=== Disk usage before cleanup ==="
+          df -h / || true
+          du -sh staging incoming universal 2>/dev/null || true
 
-          ./scripts/merge-macos-universal.sh \
-            staging/arm64/VoiceBoom.app \
-            staging/x86_64/VoiceBoom.app \
-            universal/VoiceBoom.app
+          # Remove staging and incoming to free disk space for DMG creation
+          rm -rf staging incoming
+
+          echo "=== Disk usage after cleanup ==="
+          df -h / || true
+          du -sh universal 2>/dev/null || true
 
       - name: Resign universal app
         shell: bash

@@ -44,7 +44,7 @@ impl GlobalShortcutManager {
         }
 
         // Step 2: Register new shortcut (old one still active for rollback).
-        let app_handle = self.app_handle.clone();
+        let _app_handle = self.app_handle.clone();
         let shortcut_owned = shortcut.to_string();
 
         gs.on_shortcut(new_sc, move |app, _shortcut, event| {
@@ -103,7 +103,7 @@ impl GlobalShortcutManager {
         }
 
         // Register new.
-        let app_handle = self.app_handle.clone();
+        let _app_handle = self.app_handle.clone();
         let shortcut_owned = shortcut.to_string();
 
         gs.on_shortcut(new_sc, move |app, _shortcut, event| {
@@ -187,7 +187,7 @@ impl<'a> Drop for ShortcutRollbackGuard<'a> {
             // Restore previous shortcut.
             if let Some(ref prev) = self.prev_shortcut {
                 if let Ok(sc) = prev.parse::<Shortcut>() {
-                    let app_handle = self.manager.app_handle.clone();
+                    let _app_handle = self.manager.app_handle.clone();
                     let shortcut_owned = prev.clone();
                     let _ = gs.on_shortcut(sc, move |app, _shortcut, event| {
                         use tauri_plugin_global_shortcut::ShortcutState;

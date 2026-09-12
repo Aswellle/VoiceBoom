@@ -88,6 +88,7 @@ impl LocalAsrAdapter {
     }
 
     /// Create with custom tuning (for testing).
+    #[allow(dead_code)]
     pub fn with_tuning(tuning: LocalAsrTuning) -> Self {
         Self {
             config: None,
@@ -221,7 +222,7 @@ impl StreamingAsrEngine for LocalAsrAdapter {
         };
 
         // Feed VAD in fixed-size windows.
-        let prev_offset = self.vad_offset;
+        let _prev_offset = self.vad_offset;
         while self.vad_offset + self.tuning.vad_window_size <= self.buffer.len() {
             let window = &self.buffer[self.vad_offset..self.vad_offset + self.tuning.vad_window_size];
             vad.accept_waveform(window);

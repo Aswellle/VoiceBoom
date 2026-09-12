@@ -7,9 +7,6 @@
 //! Phase 10: InjectionResult enum for detailed feedback, removal of fixed
 //! sleeps on macOS, structured error reporting.
 
-use std::io::Write;
-use std::sync::LazyLock;
-use std::sync::Mutex;
 use enigo::Keyboard;
 /// Injection strategies mirrored from the settings UI.
 #[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq, Eq, Default)]
@@ -117,7 +114,7 @@ fn windows_inject_via_clipboard(text: &str) -> InjectionResult {
 
     let target = match Target::foreground() {
         Ok(t) => t,
-        Err(e) => {
+        Err(_e) => {
             return InjectionResult::TargetUnavailable;
         }
     };

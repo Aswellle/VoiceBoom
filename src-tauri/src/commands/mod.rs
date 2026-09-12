@@ -1,5 +1,4 @@
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
-use crate::asr::AsrEvent;
 use crate::resources;
 use crate::AppState;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -749,7 +748,7 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
 /// Phase 4: Bound to session_id + utterance_id for dedupe and stale session protection.
 #[tauri::command]
 pub async fn inject_text(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     state: State<'_, AppState>,
     session_id: String,
     utterance_id: String,
@@ -932,7 +931,7 @@ pub async fn get_auto_start(app_handle: AppHandle) -> Result<bool, String> {
 /// Phase 11: No longer stores plaintext in SQLite.
 #[tauri::command]
 pub fn save_api_key(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     state: State<'_, AppState>,
     apiKey: String,
 ) -> Result<(), String> {
@@ -984,7 +983,7 @@ pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String>
 /// Phase 15: Latency instrumentation.
 #[tauri::command]
 pub fn get_performance_metrics(
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
     // Return latency metrics from the tracker.
     // For now, return a placeholder — full integration requires
@@ -1012,8 +1011,7 @@ pub fn get_performance_metrics(
 use crate::models::{
     downloader::{download, DownloadHandle, ProgressFn},
     installer::{install_from_archive, ExpectedFile},
-    verifier::verify_archive,
-    ActiveMap, ModelManager, ModelState,
+    verifier::verify_archive, ModelManager,
 };
 use tokio::sync::RwLock;
 
@@ -1034,7 +1032,7 @@ fn default_models_dir(app_handle: &tauri::AppHandle) -> Result<std::path::PathBu
 /// List all models with their runtime status.
 #[tauri::command]
 pub fn list_models(
-    app_handle: AppHandle,
+    _app_handle: AppHandle,
     manager: State<'_, ModelManagerHandle>,
 ) -> Result<Vec<serde_json::Value>, String> {
     let mgr = manager
@@ -1272,7 +1270,7 @@ pub fn get_model_registry(
 
 use crate::provider::config::{config_key, ProviderConfig, ProviderId, ProviderMode};
 use crate::provider::credential::ProviderCredentialStore;
-use crate::provider::registry::{ProviderRegistry, ProviderStatus};
+use crate::provider::registry::ProviderRegistry;
 
 /// List all providers with their runtime status (configured, enabled, local).
 #[tauri::command]
@@ -1320,8 +1318,8 @@ pub fn save_provider_config(
     state: State<'_, AppState>,
     provider: String,
     endpoint: Option<String>,
-    model: Option<String>,
-    enabled: Option<bool>,
+    _model: Option<String>,
+    _enabled: Option<bool>,
 ) -> Result<(), String> {
     let id: ProviderId = provider.parse().map_err(|e: String| e)?;
     let db = state.db.lock().map_err(|e| e.to_string())?;

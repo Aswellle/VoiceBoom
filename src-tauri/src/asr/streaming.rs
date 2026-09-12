@@ -112,7 +112,7 @@ impl AsrManager {
                 language,
                 confidence,
             },
-            AsrEvent::Error { message, .. } => AsrResult {
+            AsrEvent::Error { message: _, .. } => AsrResult {
                 text: String::new(),
                 is_final: false,
                 language: None,
@@ -151,7 +151,7 @@ impl AsrManager {
                 log::warn!("[AsrManager] finalize_and_drain timeout after {:?}", timeout);
                 break;
             }
-            let remaining = deadline - now;
+            let _remaining = deadline - now;
 
             // Wait for next event with a short poll interval.
             let event = match tokio::time::timeout(

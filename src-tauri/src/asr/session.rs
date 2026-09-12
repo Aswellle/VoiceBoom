@@ -12,7 +12,7 @@
 //! are re-exported from `engine_trait` for backward compatibility.
 
 use async_trait::async_trait;
-use super::engine_trait::{AsrConfig, AsrEngineType, AsrResult, StreamingAsrEngine};
+use super::engine_trait::{AsrConfig, StreamingAsrEngine};
 
 // ── Normalized events ─────────────────────────────────────────────────
 

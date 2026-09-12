@@ -12,13 +12,13 @@
 use async_trait::async_trait;
 use futures::{SinkExt, StreamExt};
 use std::sync::Arc;
-use tokio::sync::{mpsc, Mutex, Notify};
+use tokio::sync::{mpsc, Notify};
 use tokio_tungstenite::{
     connect_async,
     tungstenite::{client::IntoClientRequest, Message},
 };
 
-use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
+use crate::asr::engine_trait::AsrConfig;
 use crate::asr::{AsrEvent, AsrSession};
 
 /// Parsed OpenAI Realtime event.

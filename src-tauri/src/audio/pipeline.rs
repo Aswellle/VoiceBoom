@@ -41,6 +41,7 @@ pub fn bounded_audio_channel() -> (
     tokio::sync::mpsc::channel(DEFAULT_QUEUE_CAPACITY)
 }
 
+#[allow(dead_code)]
 /// Create a bounded audio channel with a custom capacity (for testing).
 pub fn bounded_audio_channel_with_capacity(
     capacity: usize,

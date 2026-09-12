@@ -281,6 +281,7 @@ impl SecureKeyStore for LinuxKeyStore {
 
 // ── Fallback: File-based ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub struct FallbackKeyStore {
     key_dir: PathBuf,
 }

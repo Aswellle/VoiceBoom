@@ -22,7 +22,7 @@ pub struct CredentialStatus {
 
 impl ProviderCredentialStore {
     /// Store a credential for a provider. Returns the credential_ref used.
-    pub fn store(provider: ProviderId, credential_ref: &str, api_key: &str) -> Result<(), String> {
+    pub fn store(_provider: ProviderId, credential_ref: &str, api_key: &str) -> Result<(), String> {
         let store = secure_keystore::platform_key_store();
         store.store(credential_ref, api_key).map_err(|e| format!("存储凭证失败: {e}"))
     }

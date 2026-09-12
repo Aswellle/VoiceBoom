@@ -12,10 +12,7 @@
 //! - t6: injection start (text injection begins)
 //! - t7: injection complete (text injection finishes)
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
 
 /// A single pipeline latency record.
 #[derive(Debug, Clone, serde::Serialize)]
