@@ -675,8 +675,7 @@ jobs:
             gh release create "${GITHUB_REF_NAME}" \
               --draft \
               --title "VoiceBoom ${GITHUB_REF_NAME}" \
-              --notes-file release-notes.md \
-              --verify-tag
+              --notes-file release-notes.md
 
           fi
 
