@@ -19,6 +19,7 @@ pub enum ResourceEngine {
 /// clean when adding future flavors (Enterprise, Beta, Dev).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
+#[allow(dead_code)]
 pub enum DistributionFlavor {
     /// Standard: model downloaded on first use.
     Standard,
@@ -30,6 +31,7 @@ pub enum DistributionFlavor {
 
 impl DistributionFlavor {
     /// Detect the flavor at runtime based on whether bundled resources exist.
+    #[allow(dead_code)]
     pub fn detect(bundled_asr_exists: bool, portable_models_exist: bool) -> Self {
         if bundled_asr_exists {
             Self::Offline
@@ -39,13 +41,14 @@ impl DistributionFlavor {
             Self::Standard
         }
     }
-
     /// Whether this flavor bundles the model (no download needed on first run).
+    #[allow(dead_code)]
     pub fn model_bundled(&self) -> bool {
         matches!(self, DistributionFlavor::Offline)
     }
 
     /// User-facing label for the flavor.
+    #[allow(dead_code)]
     pub fn display_name(&self) -> &'static str {
         match self {
             DistributionFlavor::Standard => "标准版",

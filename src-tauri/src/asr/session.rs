@@ -92,9 +92,11 @@ pub trait AsrSession: Send + Sync {
     /// Shut down the session and release all resources.
     async fn shutdown(&mut self) -> anyhow::Result<()>;
     /// Get the session/engine name.
+    #[allow(dead_code)]
     fn name(&self) -> &str;
 
     /// Check if the session is ready to receive audio.
+    #[allow(dead_code)]
     fn is_ready(&self) -> bool;
 }
 
@@ -168,6 +170,7 @@ impl AsrSession for LegacySessionAdapter {
 
 /// A configurable fake ASR provider for integration tests.
 /// Can simulate partial/final events, network failures, and out-of-order events.
+#[allow(dead_code)]
 pub struct FakeAsrSession {
     name: String,
     ready: bool,
@@ -179,6 +182,7 @@ pub struct FakeAsrSession {
 
 impl FakeAsrSession {
     /// Create a fake session with a fixed sequence of events.
+    #[allow(dead_code)]
     pub fn new(name: &str, events: Vec<AsrEvent>) -> Self {
         Self {
             name: name.to_string(),
@@ -189,14 +193,15 @@ impl FakeAsrSession {
             fail_after_pushes: None,
         }
     }
-
     /// Configure the session to fail after N audio pushes.
+    #[allow(dead_code)]
     pub fn fail_after_pushes(mut self, n: u64) -> Self {
         self.fail_after_pushes = Some(n);
         self
     }
 
     /// Get the number of audio frames pushed so far.
+    #[allow(dead_code)]
     pub fn push_count(&self) -> u64 {
         self.push_count
     }

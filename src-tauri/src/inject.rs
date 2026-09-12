@@ -33,16 +33,19 @@ pub enum InjectionResult {
 
 impl InjectionResult {
     /// Whether this result represents a successful injection.
+    #[allow(dead_code)]
     pub fn is_success(&self) -> bool {
         matches!(self, InjectionResult::Injected | InjectionResult::ClipboardFallback)
     }
 
     /// Whether the user should be prompted to manually paste.
+    #[allow(dead_code)]
     pub fn needs_manual_paste(&self) -> bool {
         matches!(self, InjectionResult::ClipboardFallback)
     }
 
     /// User-facing message for this result.
+    #[allow(dead_code)]
     pub fn message(&self) -> String {
         match self {
             InjectionResult::Injected => "文本已注入".into(),
@@ -248,6 +251,7 @@ fn read_clipboard() -> Option<String> {
 
 #[cfg(not(windows))]
 fn write_clipboard(text: &str) -> Result<(), String> {
+    use std::io::Write;
     #[cfg(target_os = "macos")]
     {
         let mut child = std::process::Command::new("pbcopy")

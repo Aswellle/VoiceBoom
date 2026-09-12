@@ -9,6 +9,7 @@
 // If anything fails the staging directory is removed, leaving any previous
 // version intact (rollback by design).
 
+#![allow(dead_code)]
 use std::path::{Path, PathBuf};
 
 use crate::models::verifier::verify_file;

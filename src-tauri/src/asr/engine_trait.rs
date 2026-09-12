@@ -62,8 +62,10 @@ pub trait StreamingAsrEngine: Send + Sync {
     async fn close(&mut self) -> anyhow::Result<()>;
 
     /// Get the engine name
+    #[allow(dead_code)]
     fn name(&self) -> &str;
 
     /// Check if the engine is ready
+    #[allow(dead_code)]
     fn is_ready(&self) -> bool;
 }

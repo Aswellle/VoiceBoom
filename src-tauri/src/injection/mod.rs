@@ -9,6 +9,7 @@
 //! Architecture Lock E: Same utterance can only be injected once.
 //! Architecture Lock F: Target change must result in ClipboardFallback.
 
+#![allow(dead_code)]
 pub mod adapters;
 pub mod controller;
 pub mod model;

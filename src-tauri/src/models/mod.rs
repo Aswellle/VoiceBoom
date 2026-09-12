@@ -14,6 +14,7 @@
 //     │       └── silero_vad.onnx
 //     └── active.json  {"sensevoice": "1.0.0"}
 
+#![allow(dead_code)]
 pub mod downloader;
 pub mod installer;
 pub mod verifier;

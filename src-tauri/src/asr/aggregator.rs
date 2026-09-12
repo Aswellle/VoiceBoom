@@ -6,7 +6,8 @@
 //! - Partial → replace currentPartial (no accumulation)
 //! - SegmentFinal → commit segment, clear currentPartial
 //! - UtteranceFinal → commit utterance, mark injection-ready
-//!
+
+#![allow(dead_code)]
 //! For providers that don't emit explicit utterance-final events,
 //! the session finalizer produces a unified utterance-final.
 

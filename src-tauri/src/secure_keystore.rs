@@ -8,6 +8,7 @@
 //!
 //! SQLite only stores a credential reference (account id), never the plaintext key.
 
+#![allow(dead_code)]
 use std::path::PathBuf;
 
 /// Result type for key store operations.

@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::resources;
 use crate::AppState;
@@ -59,6 +60,7 @@ fn parse_engine_type(engine: &str) -> AsrEngineType {
 /// Start audio recording and ASR processing
 /// M4 fix: Accept engine/language/apiKey/endpoint parameters
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, AppState>,
@@ -930,6 +932,7 @@ pub async fn get_auto_start(app_handle: AppHandle) -> Result<bool, String> {
 /// Persist the cloud API key into OS secure storage.
 /// Phase 11: No longer stores plaintext in SQLite.
 #[tauri::command]
+#[allow(non_snake_case)]
 pub fn save_api_key(
     _app_handle: AppHandle,
     state: State<'_, AppState>,

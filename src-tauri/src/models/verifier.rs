@@ -3,6 +3,7 @@
 // Every downloaded file and archive is verified before installation.
 // Verification failures surface as `ModelState::Corrupt`.
 
+#![allow(dead_code)]
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::path::Path;

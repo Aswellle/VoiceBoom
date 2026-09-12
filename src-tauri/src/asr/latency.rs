@@ -6,7 +6,9 @@
 //! - t0: microphone capture (CPAL callback)
 //! - t1: queue enqueue (audio frame enters bounded channel)
 //! - t2: queue dequeue (bridge task reads from channel)
-//! - t3: provider send (ASR receives audio)
+//!
+#![allow(dead_code)]
+//! - t0: microphone capture (CPAL callback)
 //! - t4: provider partial (first partial result received)
 //! - t5: frontend event (UI receives the event)
 //! - t6: injection start (text injection begins)

@@ -6,6 +6,7 @@
 //! Architecture Lock E: Same utterance can only be injected once.
 //! Architecture Lock F: Target change must result in ClipboardFallback.
 
+#![allow(dead_code)]
 use std::collections::HashSet;
 use std::sync::Mutex;
 

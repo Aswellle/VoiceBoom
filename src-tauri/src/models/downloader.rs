@@ -10,6 +10,7 @@
 //
 // The HTTP client is passed in (not built per-download) so connections pool.
 
+#![allow(dead_code)]
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;

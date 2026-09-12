@@ -6,7 +6,8 @@
 //! Architecture Lock B: Injection must be bound to session_id.
 //! Architecture Lock C: Injection must not re-acquire foreground target.
 //! Architecture Lock D: Old session results must not inject into new session.
-//! Architecture Lock E: Same utterance can only be injected once.
+
+#![allow(dead_code)]
 //! Architecture Lock F: Target change must result in ClipboardFallback, not silent re-injection.
 
 use std::time::Instant;
