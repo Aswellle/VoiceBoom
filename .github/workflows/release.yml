@@ -393,14 +393,22 @@ jobs:
           APP_X64=$(find x64.app -maxdepth 1 -name "*.app" -print -quit)
           APP_NAME=$(basename "$APP_ARM")
 
+          echo "APP_ARM=$APP_ARM"
+          echo "APP_X64=$APP_X64"
+          echo "APP_NAME=$APP_NAME"
+          echo "=== arm64.app tree ==="
+          find arm64.app -maxdepth 3 -print
+          echo "=== x64.app tree ==="
+          find x64.app -maxdepth 3 -print
+
           mkdir -p release
           cp -R "$APP_ARM" "release/$APP_NAME"
 
           UNIVERSAL_APP="release/$APP_NAME"
 
           # Find the actual binary name inside Contents/MacOS
-          ARM_BIN=$(find "$APP_ARM/Contents/MacOS" -type f -perm +111 -print -quit)
-          X64_BIN=$(find "$APP_X64/Contents/MacOS" -type f -perm +111 -print -quit)
+          ARM_BIN=$(find "$APP_ARM/Contents/MacOS" -type f -print -quit)
+          X64_BIN=$(find "$APP_X64/Contents/MacOS" -type f -print -quit)
           BIN_NAME=$(basename "$ARM_BIN")
 
           UNIVERSAL_BIN="$UNIVERSAL_APP/Contents/MacOS/$BIN_NAME"
