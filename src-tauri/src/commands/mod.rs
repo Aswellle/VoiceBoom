@@ -872,10 +872,8 @@ pub async fn inject_text(
             }
             #[cfg(not(windows))]
             {
-                return Ok(serde_json::to_value(
-                    &crate::injection::InjectionResult::TargetUnavailable,
-                )
-                .map_err(|e| format!("{e}"))?);
+                return serde_json::to_value(&crate::injection::InjectionResult::TargetUnavailable)
+                    .map_err(|e| format!("{e}"));
             }
         }
     };
