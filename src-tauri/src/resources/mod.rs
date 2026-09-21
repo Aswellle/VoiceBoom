@@ -270,6 +270,7 @@ impl ResourceManager {
         std::fs::read_to_string(file).unwrap_or_else(|_| "unknown".to_string())
     }
 
+    #[allow(clippy::only_used_in_recursion)]
     fn dir_size(&self, dir: &Path) -> u64 {
         let mut size = 0u64;
         if let Ok(entries) = std::fs::read_dir(dir) {

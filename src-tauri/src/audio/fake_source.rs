@@ -3,21 +3,25 @@
 //! Used by integration tests to simulate microphone input without real hardware.
 //! Produces silence (all zeros) or a sine wave pattern.
 
+#[cfg(test)]
 use crate::audio::pipeline::AudioFrame;
+#[cfg(test)]
 use std::sync::atomic::{AtomicUsize, Ordering};
+#[cfg(test)]
 use std::time::Instant;
 
-#[allow(dead_code)]
 /// A fake audio source that generates synthetic frames.
 ///
 /// Used by integration tests to simulate microphone input without real hardware.
 /// Produces silence (all zeros) or a sine wave pattern.
+#[cfg(test)]
 pub struct FakeAudioSource {
     frame_count: AtomicUsize,
     sample_rate: u32,
     frame_samples: usize,
 }
 
+#[cfg(test)]
 impl FakeAudioSource {
     /// Create a new fake audio source.
     pub fn new(sample_rate: u32, frame_samples: usize) -> Self {

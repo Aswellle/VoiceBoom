@@ -16,4 +16,5 @@ mod pipeline_tests;
 pub use session::{AsrEvent, AsrSession};
 // Re-export core types for use by adapters and commands.
 pub use engine_trait::AsrConfig;
+pub use engine_trait::{AsrEngineType, AsrResult, StreamingAsrEngine};
 // Legacy types remain available for backward compatibility during migration.

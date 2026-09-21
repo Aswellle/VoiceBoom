@@ -185,7 +185,7 @@ async fn test_injection_target_recording() {
 
     // Record multiple injections
     target.inject("first", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
-    target.inject("second", InjectionMethod::DirectUnicode, "sess-1", "utt-2");
+    target.inject("second", InjectionMethod::UnicodeTyping, "sess-1", "utt-2");
     target.inject("third", InjectionMethod::ClipboardPaste, "sess-2", "utt-1");
 
     assert_eq!(target.attempt_count(), 3);

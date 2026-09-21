@@ -97,7 +97,7 @@ mod tests {
     fn test_fake_injection_target_multiple_attempts() {
         let target = FakeInjectionTarget::new();
         target.inject("first", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
-        target.inject("second", InjectionMethod::Keystroke, "sess-1", "utt-2");
+        target.inject("second", InjectionMethod::UnicodeTyping, "sess-1", "utt-2");
 
         assert_eq!(target.attempt_count(), 2);
         let attempts = target.attempts();

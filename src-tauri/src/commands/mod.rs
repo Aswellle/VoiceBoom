@@ -63,6 +63,17 @@ fn parse_engine_type(engine: &str) -> AsrEngineType {
     }
 }
 
+/// Parameters for starting a recording session.
+#[derive(Debug, Clone, serde::Deserialize)]
+pub struct RecordingParams {
+    pub engine: Option<String>,
+    pub language: Option<String>,
+    pub api_key: Option<String>,
+    pub endpoint: Option<String>,
+    pub device: Option<String>,
+    pub vad_sensitivity: Option<u32>,
+}
+
 /// Start audio recording and ASR processing
 /// M4 fix: Accept engine/language/apiKey/endpoint parameters
 #[tauri::command]
@@ -70,13 +81,14 @@ fn parse_engine_type(engine: &str) -> AsrEngineType {
 pub async fn start_recording(
     app_handle: AppHandle,
     state: State<'_, AppState>,
-    engine: Option<String>,
-    language: Option<String>,
-    apiKey: Option<String>,
-    endpoint: Option<String>,
-    device: Option<String>,
-    vadSensitivity: Option<u32>,
+    params: RecordingParams,
 ) -> Result<(), String> {
+    let engine = params.engine;
+    let language = params.language;
+    let api_key = params.api_key;
+    let endpoint = params.endpoint;
+    let device = params.device;
+    let vad_sensitivity = params.vad_sensitivity;
     let session_id = generate_session_id();
     let engine_name = engine
         .clone()
@@ -197,7 +209,7 @@ pub async fn start_recording(
     };
     let asr_initialized = if let Some(ref mut asr) = asr_clone {
         // Phase 11: Resolve API key from secure storage if not provided.
-        let resolved_api_key = match apiKey {
+        let resolved_api_key = match api_key {
             Some(k) if !k.is_empty() => Some(k),
             _ => {
                 let store = crate::secure_keystore::platform_key_store();
@@ -209,7 +221,7 @@ pub async fn start_recording(
             api_key: resolved_api_key,
             endpoint: resolved_endpoint.clone(),
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
-            vad_sensitivity: vadSensitivity.unwrap_or(50),
+            vad_sensitivity: vad_sensitivity.unwrap_or(50),
             sample_rate: 16000,
         };
         log::info!("[session={session_id}] asr.initialize engine={engine_name}");
