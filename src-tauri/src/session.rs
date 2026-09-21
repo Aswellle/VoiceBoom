@@ -16,8 +16,8 @@
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::injection::model::InjectionTarget;
 use crate::asr::engine_trait::{AsrEngineType, AsrResult};
+use crate::injection::model::InjectionTarget;
 
 /// The logical states of a recording session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -202,8 +202,8 @@ fn now_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
-    use crate::asr::{AsrEngineType, AsrResult};
     use super::*;
+    use crate::asr::{AsrEngineType, AsrResult};
     fn make_session() -> RecordingSession {
         RecordingSession::new("test-123".into(), "funasr".into(), "auto".into())
     }
