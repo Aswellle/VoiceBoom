@@ -65,7 +65,7 @@ jobs:
         run: |
           mkdir -p /tmp/sherpa-onnx
           curl -L -o /tmp/sherpa-onnx/lib.tar.bz2 \
-            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-linux-x64-shared-MT-Release-lib.tar.bz2
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-linux-x64-shared-lib.tar.bz2
           tar -xjf /tmp/sherpa-onnx/lib.tar.bz2 -C /tmp/sherpa-onnx
           echo "SHERPA_ONNX_LIB_DIR=/tmp/sherpa-onnx" >> $GITHUB_ENV
 
