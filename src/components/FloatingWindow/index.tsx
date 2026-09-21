@@ -307,14 +307,6 @@ export function FloatingWindow() {
             </span>
           )}
 
-          {/* Engine label */}
-          <span
-            className="text-[10px] px-2 py-0.5 rounded-full whitespace-nowrap shrink-0"
-            style={{ background: 'var(--surface-muted)', color: 'var(--text-secondary)' }}
-            title={`当前语音识别引擎：${currentEngineLabel}`}
-          >
-            {currentEngineLabel}
-          </span>
 
           {/* Start/Stop button */}
           <button
