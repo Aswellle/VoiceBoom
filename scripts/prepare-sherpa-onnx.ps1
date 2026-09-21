@@ -74,7 +74,7 @@ if (-not $platformConfig) {
 $archiveName = $platformConfig.archive
 $expectedSha256 = $platformConfig.sha256
 $sources = @($platformConfig.sources)
-$hasHash = $expectedSha256 -and ($expectedSha256 -notlike "PLACEHOLDER*")
+$hasHash = [bool]($expectedSha256 -match '^[0-9a-fA-F]{64}$')
 
 Write-Status "Archive: $archiveName"
 

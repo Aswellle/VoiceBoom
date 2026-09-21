@@ -64,19 +64,14 @@ jobs:
             libglib2.0-dev libgtk-3-dev libwebkit2gtk-4.1-dev \
             libappindicator3-dev librsvg2-dev patchelf \
             libasound2-dev pkg-config
-      - name: Download sherpa-onnx libraries
-        run: |
-          mkdir -p /tmp/sherpa-onnx
-          curl -L -o /tmp/sherpa-onnx/lib.tar.bz2 \
-            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2
-          tar -xjf /tmp/sherpa-onnx/lib.tar.bz2 -C /tmp/sherpa-onnx
-          echo "SHERPA_ONNX_LIB_DIR=/tmp/sherpa-onnx" >> $GITHUB_ENV
-
-      - name: Cache sherpa-onnx archive
+      - name: Cache sherpa-onnx
         uses: actions/cache@v6
         with:
-          path: /tmp/sherpa-onnx
-          key: sherpa-onnx-1.13.8-linux-x64
+          path: .cache/sherpa-onnx
+          key: sherpa-onnx-${{ runner.os }}-1.13.8
+
+      - name: Prepare sherpa-onnx
+        run: python3 scripts/fetch-sherpa-archive.py
 
       - name: Cache Cargo
         uses: actions/cache@v6

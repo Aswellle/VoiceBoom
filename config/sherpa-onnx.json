@@ -1,36 +1,45 @@
 {
+  "_comment": "Native sherpa-onnx archives for build-time linking. Shared by scripts/prepare-sherpa-onnx.ps1 (Windows) and scripts/fetch-sherpa-archive.py (Linux/macOS/CI). SHA-256 values are the upstream release artifacts; regenerate with the fetch script if the version changes.",
   "version": "1.13.8",
   "platforms": {
     "windows-x64": {
       "archive": "sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-lib.tar.bz2",
-      "sha256": "PLACEHOLDER_WIN_SHA256",
+      "size": 8032957,
+      "sha256": "b8eedf41bd6d3779218887b48367bb7a3ece5aaa7667f01f69ee823a12b0a9e7",
       "sources": [
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-lib.tar.bz2",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-lib/resolve/main/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-lib.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-win-x64-shared-MT-Release-lib.tar.bz2"
       ]
     },
     "linux-x64": {
       "archive": "sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2",
-      "sha256": "PLACEHOLDER_LINUX_SHA256",
+      "size": 9816899,
+      "sha256": "3892d184be41027e18165e67f549cd4e4cdd8dcd73ac5579e97afd55e14e30b6",
       "sources": [
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-lib/resolve/main/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2"
+      ]
+    },
+    "linux-arm64": {
+      "archive": "sherpa-onnx-v1.13.8-linux-aarch64-shared-cpu-lib.tar.bz2",
+      "size": 0,
+      "sha256": "UNVERIFIED",
+      "sources": [
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-aarch64-shared-cpu-lib.tar.bz2"
       ]
     },
     "macos-x64": {
       "archive": "sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2",
-      "sha256": "PLACEHOLDER_MACOS_X64_SHA256",
+      "size": 10014197,
+      "sha256": "0f88371565a06372889c76266e253abd1b415fcc6f98232cabd968933efb0711",
       "sources": [
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-lib/resolve/main/sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-x64-shared-lib.tar.bz2"
       ]
     },
     "macos-arm64": {
       "archive": "sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2",
-      "sha256": "PLACEHOLDER_MACOS_ARM64_SHA256",
+      "size": 8773198,
+      "sha256": "ae77050cdae565496059d96f5ab33d77b397a0864282a4e4a26e3b3b3effb948",
       "sources": [
-        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2",
-        "https://huggingface.co/csukuangfj/sherpa-onnx-lib/resolve/main/sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2"
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-osx-arm64-shared-lib.tar.bz2"
       ]
     }
   }
