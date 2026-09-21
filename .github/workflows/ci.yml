@@ -96,6 +96,12 @@ jobs:
         run: cargo test --locked
         working-directory: src-tauri
 
+      - name: Verify offline build
+        run: cargo check --locked --offline
+        working-directory: src-tauri
+        env:
+          VOICEBOOM_OFFLINE: "1"
+
   # ------------------------------------------------------------
   # Windows: build + test with sherpa bootstrap
   # ------------------------------------------------------------
@@ -145,3 +151,9 @@ jobs:
       - name: Test
         run: cargo test --locked
         working-directory: src-tauri
+
+      - name: Verify offline build
+        run: cargo check --locked --offline
+        working-directory: src-tauri
+        env:
+          VOICEBOOM_OFFLINE: "1"
