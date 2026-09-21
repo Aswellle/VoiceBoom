@@ -153,7 +153,6 @@ async fn test_pipeline_stale_session_injection() {
     assert_eq!(last.session_id, "sess-old");
 }
 
-    target.inject("second", InjectionMethod::UnicodeTyping, "sess-1", "utt-2");
 #[tokio::test]
 async fn test_audio_source_frame_generation() {
     let source = FakeAudioSource::new(16000, 1024);

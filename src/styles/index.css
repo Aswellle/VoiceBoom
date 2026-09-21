@@ -58,6 +58,7 @@
   --motion-fast: 150ms;
   --motion-normal: 300ms;
   --motion-slow: 500ms;
+}
 
 /* Dark theme tokens */
 .dark {
