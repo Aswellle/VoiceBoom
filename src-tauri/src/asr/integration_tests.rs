@@ -5,7 +5,7 @@
 #[cfg(test)]
 mod integration_tests {
     use crate::asr::aggregator::TranscriptAggregator;
-    use crate::asr::session::{AsrEvent, FakeAsrSession, AsrSession};
+    use crate::asr::session::{AsrEvent, AsrSession, FakeAsrSession};
     use crate::asr::streaming::AsrManager;
     use std::sync::Arc;
     use tokio::sync::Mutex;
@@ -24,8 +24,7 @@ mod integration_tests {
     fn make_manager(events: Vec<AsrEvent>) -> AsrManager {
         AsrManager {
             session: Some(Arc::new(Mutex::new(Box::new(FakeAsrSession::new(
-                "fake",
-                events,
+                "fake", events,
             ))))),
             config: Some(test_config()),
         }
@@ -35,10 +34,20 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_full_session_lifecycle() {
-        let mut session = FakeAsrSession::new("test", vec![
-            AsrEvent::Partial { text: "hello".into(), language: None },
-            AsrEvent::UtteranceFinal { text: "hello world".into(), language: None, confidence: None },
-        ]);
+        let mut session = FakeAsrSession::new(
+            "test",
+            vec![
+                AsrEvent::Partial {
+                    text: "hello".into(),
+                    language: None,
+                },
+                AsrEvent::UtteranceFinal {
+                    text: "hello world".into(),
+                    language: None,
+                    confidence: None,
+                },
+            ],
+        );
 
         // Start
         session.start(test_config()).await.unwrap();
@@ -100,7 +109,9 @@ mod integration_tests {
             }
         });
         let event = parse_deepgram_event(&partial);
-        assert!(matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::Partial { ref text, .. }) if text == "hello"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::Partial { ref text, .. }) if text == "hello")
+        );
 
         // Segment final
         let segment = serde_json::json!({
@@ -112,7 +123,9 @@ mod integration_tests {
             }
         });
         let event = parse_deepgram_event(&segment);
-        assert!(matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::SegmentFinal { ref text, .. }) if text == "hello world"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::SegmentFinal { ref text, .. }) if text == "hello world")
+        );
 
         // Utterance final
         let utterance = serde_json::json!({
@@ -124,7 +137,9 @@ mod integration_tests {
             }
         });
         let event = parse_deepgram_event(&utterance);
-        assert!(matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::UtteranceFinal { ref text, .. }) if text == "hello world how are you"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::deepgram::DeepgramEvent::UtteranceFinal { ref text, .. }) if text == "hello world how are you")
+        );
     }
 
     #[tokio::test]
@@ -132,27 +147,36 @@ mod integration_tests {
         use crate::asr::adapters::openai_realtime::parse_openai_event;
 
         // Session created
-        let created = serde_json::json!({ "type": "session.created", "session": { "id": "sess_123" } });
+        let created =
+            serde_json::json!({ "type": "session.created", "session": { "id": "sess_123" } });
         assert!(parse_openai_event(&created).is_some());
 
         // Partial delta
         let delta = serde_json::json!({ "type": "response.output_text.delta", "delta": "hello" });
         let event = parse_openai_event(&delta);
-        assert!(matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Partial { ref text }) if text == "hello"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Partial { ref text }) if text == "hello")
+        );
 
         // Final text
         let done = serde_json::json!({ "type": "response.text.done", "text": "hello world" });
         let event = parse_openai_event(&done);
-        assert!(matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Final { ref text }) if text == "hello world"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Final { ref text }) if text == "hello world")
+        );
 
         // Response done
-        let resp_done = serde_json::json!({ "type": "response.done", "response": { "id": "resp_123" } });
+        let resp_done =
+            serde_json::json!({ "type": "response.done", "response": { "id": "resp_123" } });
         assert!(parse_openai_event(&resp_done).is_some());
 
         // Error
-        let error = serde_json::json!({ "type": "error", "error": { "message": "API key invalid" } });
+        let error =
+            serde_json::json!({ "type": "error", "error": { "message": "API key invalid" } });
         let event = parse_openai_event(&error);
-        assert!(matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Error { ref message }) if message == "API key invalid"));
+        assert!(
+            matches!(event, Some(crate::asr::adapters::openai_realtime::OpenAIEvent::Error { ref message }) if message == "API key invalid")
+        );
     }
 
     // ── Flush / Finalization Tests ─────────────────────────────────────
@@ -160,12 +184,25 @@ mod integration_tests {
     #[tokio::test]
     async fn test_flush_collects_all_events() {
         let manager = make_manager(vec![
-            AsrEvent::Partial { text: "interim".into(), language: None },
-            AsrEvent::SegmentFinal { text: "first segment".into(), language: None, confidence: None },
-            AsrEvent::UtteranceFinal { text: "final result".into(), language: None, confidence: None },
+            AsrEvent::Partial {
+                text: "interim".into(),
+                language: None,
+            },
+            AsrEvent::SegmentFinal {
+                text: "first segment".into(),
+                language: None,
+                confidence: None,
+            },
+            AsrEvent::UtteranceFinal {
+                text: "final result".into(),
+                language: None,
+                confidence: None,
+            },
         ]);
 
-        let (events, timed_out) = manager.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events, timed_out) = manager
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
 
         // Should collect events until utterance-final
         assert!(!events.is_empty());
@@ -177,7 +214,9 @@ mod integration_tests {
         // Empty session — no events, should timeout
         let manager = make_manager(vec![]);
 
-        let (events, timed_out) = manager.finalize_and_drain(std::time::Duration::from_millis(100)).await;
+        let (events, timed_out) = manager
+            .finalize_and_drain(std::time::Duration::from_millis(100))
+            .await;
 
         assert!(events.is_empty());
         assert!(timed_out);
@@ -186,11 +225,14 @@ mod integration_tests {
     #[tokio::test]
     async fn test_flush_with_only_partials() {
         // Only partials, no final — should drain what's available then timeout
-        let manager = make_manager(vec![
-            AsrEvent::Partial { text: "partial1".into(), language: None },
-        ]);
+        let manager = make_manager(vec![AsrEvent::Partial {
+            text: "partial1".into(),
+            language: None,
+        }]);
 
-        let (events, timed_out) = manager.finalize_and_drain(std::time::Duration::from_millis(100)).await;
+        let (events, timed_out) = manager
+            .finalize_and_drain(std::time::Duration::from_millis(100))
+            .await;
 
         // Got the partial but no final → timeout
         assert_eq!(events.len(), 1);
@@ -210,7 +252,10 @@ mod integration_tests {
     #[test]
     fn test_aggregator_partial_only() {
         let mut agg = TranscriptAggregator::new();
-        agg.process_event(&AsrEvent::Partial { text: "hello".into(), language: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "hello".into(),
+            language: None,
+        });
         let result = agg.finalize();
         assert!(result.injection_ready);
         assert_eq!(result.injection_text, Some("hello".into()));
@@ -221,8 +266,15 @@ mod integration_tests {
         let mut agg = TranscriptAggregator::new();
 
         // First utterance
-        agg.process_event(&AsrEvent::Partial { text: "first".into(), language: None });
-        agg.process_event(&AsrEvent::UtteranceFinal { text: "first".into(), language: None, confidence: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "first".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::UtteranceFinal {
+            text: "first".into(),
+            language: None,
+            confidence: None,
+        });
 
         assert!(agg.is_utterance_finalized());
         assert_eq!(agg.committed_text(), "first");
@@ -231,8 +283,15 @@ mod integration_tests {
         agg.reset(None);
 
         // Second utterance
-        agg.process_event(&AsrEvent::Partial { text: "second".into(), language: None });
-        agg.process_event(&AsrEvent::UtteranceFinal { text: "second".into(), language: None, confidence: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "second".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::UtteranceFinal {
+            text: "second".into(),
+            language: None,
+            confidence: None,
+        });
 
         assert_eq!(agg.committed_text(), "second");
     }
@@ -242,8 +301,15 @@ mod integration_tests {
         let mut agg = TranscriptAggregator::new();
 
         // Segment final arrives before partial (out of order)
-        agg.process_event(&AsrEvent::SegmentFinal { text: "committed".into(), language: None, confidence: None });
-        agg.process_event(&AsrEvent::Partial { text: "new partial".into(), language: None });
+        agg.process_event(&AsrEvent::SegmentFinal {
+            text: "committed".into(),
+            language: None,
+            confidence: None,
+        });
+        agg.process_event(&AsrEvent::Partial {
+            text: "new partial".into(),
+            language: None,
+        });
 
         // Partial should be displayed after committed
         assert_eq!(agg.display_text(), "committed new partial");
@@ -254,11 +320,28 @@ mod integration_tests {
         let mut agg = TranscriptAggregator::new();
 
         // Simulate the Gate 8 scenario
-        agg.process_event(&AsrEvent::Partial { text: "A".into(), language: None });
-        agg.process_event(&AsrEvent::Partial { text: "A B".into(), language: None });
-        agg.process_event(&AsrEvent::SegmentFinal { text: "A B".into(), language: None, confidence: None });
-        agg.process_event(&AsrEvent::Partial { text: "C".into(), language: None });
-        agg.process_event(&AsrEvent::UtteranceFinal { text: "C".into(), language: None, confidence: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "A".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::Partial {
+            text: "A B".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::SegmentFinal {
+            text: "A B".into(),
+            language: None,
+            confidence: None,
+        });
+        agg.process_event(&AsrEvent::Partial {
+            text: "C".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::UtteranceFinal {
+            text: "C".into(),
+            language: None,
+            confidence: None,
+        });
 
         // Should be "A B C", not "AA B C" or "A B A B C"
         assert_eq!(agg.committed_text(), "A B C");
@@ -286,9 +369,11 @@ mod integration_tests {
 
     #[tokio::test]
     async fn test_manager_lifecycle() {
-        let mut manager = make_manager(vec![
-            AsrEvent::UtteranceFinal { text: "test".into(), language: None, confidence: None },
-        ]);
+        let mut manager = make_manager(vec![AsrEvent::UtteranceFinal {
+            text: "test".into(),
+            language: None,
+            confidence: None,
+        }]);
 
         assert!(manager.is_active());
 

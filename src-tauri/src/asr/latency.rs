@@ -20,13 +20,13 @@ use std::sync::Mutex;
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct LatencyRecord {
     pub session_id: String,
-    pub t0_capture: Option<u64>,      // unix microseconds
-    pub t1_enqueue: Option<u64>,      // unix microseconds
-    pub t2_dequeue: Option<u64>,      // unix microseconds
-    pub t3_provider_send: Option<u64>, // unix microseconds
-    pub t4_provider_partial: Option<u64>, // unix microseconds
-    pub t5_frontend_event: Option<u64>, // unix microseconds
-    pub t6_injection_start: Option<u64>, // unix microseconds
+    pub t0_capture: Option<u64>,            // unix microseconds
+    pub t1_enqueue: Option<u64>,            // unix microseconds
+    pub t2_dequeue: Option<u64>,            // unix microseconds
+    pub t3_provider_send: Option<u64>,      // unix microseconds
+    pub t4_provider_partial: Option<u64>,   // unix microseconds
+    pub t5_frontend_event: Option<u64>,     // unix microseconds
+    pub t6_injection_start: Option<u64>,    // unix microseconds
     pub t7_injection_complete: Option<u64>, // unix microseconds
 }
 
@@ -34,11 +34,11 @@ pub struct LatencyRecord {
 #[derive(Debug, Clone, serde::Serialize, Default)]
 pub struct LatencyMetrics {
     pub sample_count: usize,
-    pub capture_to_partial_ms: Option<f64>,   // P50
+    pub capture_to_partial_ms: Option<f64>, // P50
     pub capture_to_partial_p90_ms: Option<f64>,
     pub capture_to_partial_p95_ms: Option<f64>,
     pub capture_to_partial_p99_ms: Option<f64>,
-    pub capture_to_final_ms: Option<f64>,     // P50
+    pub capture_to_final_ms: Option<f64>, // P50
     pub capture_to_final_p90_ms: Option<f64>,
     pub capture_to_final_p95_ms: Option<f64>,
     pub capture_to_final_p99_ms: Option<f64>,
@@ -119,11 +119,9 @@ impl LatencyTracker {
         // Capture → Partial
         let capture_to_partial: Vec<f64> = records
             .iter()
-            .filter_map(|r| {
-                match (r.t0_capture, r.t4_provider_partial) {
-                    (Some(t0), Some(t4)) => Some((t4 - t0) as f64 / 1000.0),
-                    _ => None,
-                }
+            .filter_map(|r| match (r.t0_capture, r.t4_provider_partial) {
+                (Some(t0), Some(t4)) => Some((t4 - t0) as f64 / 1000.0),
+                _ => None,
             })
             .collect();
         if !capture_to_partial.is_empty() {
@@ -136,11 +134,9 @@ impl LatencyTracker {
         // Capture → Final (using t5 frontend event as proxy for final)
         let capture_to_final: Vec<f64> = records
             .iter()
-            .filter_map(|r| {
-                match (r.t0_capture, r.t5_frontend_event) {
-                    (Some(t0), Some(t5)) => Some((t5 - t0) as f64 / 1000.0),
-                    _ => None,
-                }
+            .filter_map(|r| match (r.t0_capture, r.t5_frontend_event) {
+                (Some(t0), Some(t5)) => Some((t5 - t0) as f64 / 1000.0),
+                _ => None,
             })
             .collect();
         if !capture_to_final.is_empty() {
@@ -153,11 +149,9 @@ impl LatencyTracker {
         // Capture → Injection
         let capture_to_injection: Vec<f64> = records
             .iter()
-            .filter_map(|r| {
-                match (r.t0_capture, r.t7_injection_complete) {
-                    (Some(t0), Some(t7)) => Some((t7 - t0) as f64 / 1000.0),
-                    _ => None,
-                }
+            .filter_map(|r| match (r.t0_capture, r.t7_injection_complete) {
+                (Some(t0), Some(t7)) => Some((t7 - t0) as f64 / 1000.0),
+                _ => None,
             })
             .collect();
         if !capture_to_injection.is_empty() {
@@ -221,7 +215,7 @@ mod tests {
         tracker.start_session("test-1".into());
         tracker.record_timestamp("test-1", "t0_capture", 1000);
         tracker.record_timestamp("test-1", "t4_provider_partial", 1500); // 500us = 0.5ms
-        tracker.record_timestamp("test-1", "t5_frontend_event", 2000);  // 1000us = 1ms
+        tracker.record_timestamp("test-1", "t5_frontend_event", 2000); // 1000us = 1ms
 
         let metrics = tracker.metrics();
         assert_eq!(metrics.sample_count, 1);

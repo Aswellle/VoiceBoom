@@ -11,8 +11,8 @@ use std::collections::HashSet;
 use std::sync::Mutex;
 
 use super::model::{
-    InjectionKey, InjectionMode, InjectionRequest, InjectionResult,
-    InjectionTarget, TargetValidation,
+    InjectionKey, InjectionMode, InjectionRequest, InjectionResult, InjectionTarget,
+    TargetValidation,
 };
 
 /// Manages injection lifecycle: dedupe, stale session guard, in-flight protection.
@@ -136,7 +136,13 @@ mod tests {
         let controller = InjectionController::new();
         let target = make_target();
 
-        let request = controller.create_request("sess-1", "utt-1", "hello", target.clone(), InjectionMode::Clipboard);
+        let request = controller.create_request(
+            "sess-1",
+            "utt-1",
+            "hello",
+            target.clone(),
+            InjectionMode::Clipboard,
+        );
 
         // First validation should pass.
         assert!(controller.validate(&request, Some("sess-1")).is_ok());
@@ -155,7 +161,13 @@ mod tests {
         let target = make_target();
 
         // Request from old session.
-        let request = controller.create_request("sess-old", "utt-1", "hello", target, InjectionMode::Clipboard);
+        let request = controller.create_request(
+            "sess-old",
+            "utt-1",
+            "hello",
+            target,
+            InjectionMode::Clipboard,
+        );
 
         // Active session is different.
         let result = controller.validate(&request, Some("sess-new"));
@@ -167,7 +179,8 @@ mod tests {
         let controller = InjectionController::new();
         let target = make_target();
 
-        let request = controller.create_request("sess-1", "utt-1", "hello", target, InjectionMode::Clipboard);
+        let request =
+            controller.create_request("sess-1", "utt-1", "hello", target, InjectionMode::Clipboard);
 
         // Mark as in-flight.
         controller.mark_in_flight(&InjectionKey::new("sess-1", "utt-1"));

@@ -68,9 +68,12 @@ impl SecureKeyStore for WindowsKeyStore {
         if !path.exists() {
             return Ok(None);
         }
-        let encrypted = std::fs::read(&path).map_err(|e| format!("Failed to read key file: {e}"))?;
+        let encrypted =
+            std::fs::read(&path).map_err(|e| format!("Failed to read key file: {e}"))?;
         let decrypted = dpapi_decrypt(&encrypted)?;
-        String::from_utf8(decrypted).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
+        String::from_utf8(decrypted)
+            .map_err(|e| format!("Invalid UTF-8: {e}"))
+            .map(Some)
     }
 
     fn delete(&self, account: &str) -> KeyStoreResult<()> {
@@ -107,11 +110,11 @@ fn dpapi_encrypt(data: &[u8]) -> KeyStoreResult<Vec<u8>> {
     let result = unsafe {
         winapi::um::dpapi::CryptProtectData(
             &mut input,
-            ptr::null(), // description
+            ptr::null(),     // description
             ptr::null_mut(), // optional entropy
             ptr::null_mut(), // reserved
             ptr::null_mut(), // prompt flags
-            0, // flags
+            0,               // flags
             &mut output,
         )
     };
@@ -120,9 +123,8 @@ fn dpapi_encrypt(data: &[u8]) -> KeyStoreResult<Vec<u8>> {
         return Err("DPAPI CryptProtectData failed".into());
     }
 
-    let encrypted = unsafe {
-        std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec()
-    };
+    let encrypted =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
     unsafe {
         winapi::um::winbase::LocalFree(output.pbData as *mut winapi::ctypes::c_void);
     }
@@ -148,7 +150,7 @@ fn dpapi_decrypt(data: &[u8]) -> KeyStoreResult<Vec<u8>> {
             ptr::null_mut(), // optional entropy
             ptr::null_mut(), // reserved
             ptr::null_mut(), // prompt flags
-            0, // flags
+            0,               // flags
             &mut output,
         )
     };
@@ -157,9 +159,8 @@ fn dpapi_decrypt(data: &[u8]) -> KeyStoreResult<Vec<u8>> {
         return Err("DPAPI CryptUnprotectData failed".into());
     }
 
-    let decrypted = unsafe {
-        std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec()
-    };
+    let decrypted =
+        unsafe { std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec() };
     unsafe {
         winapi::um::winbase::LocalFree(output.pbData as *mut winapi::ctypes::c_void);
     }
@@ -202,7 +203,8 @@ impl SecureKeyStore for MacKeyStore {
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&path, perms).map_err(|e| format!("Failed to set permissions: {e}"))?;
+            std::fs::set_permissions(&path, perms)
+                .map_err(|e| format!("Failed to set permissions: {e}"))?;
         }
         Ok(())
     }
@@ -213,7 +215,9 @@ impl SecureKeyStore for MacKeyStore {
             return Ok(None);
         }
         let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read key: {e}"))?;
-        String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
+        String::from_utf8(bytes)
+            .map_err(|e| format!("Invalid UTF-8: {e}"))
+            .map(Some)
     }
 
     fn delete(&self, account: &str) -> KeyStoreResult<()> {
@@ -257,7 +261,8 @@ impl SecureKeyStore for LinuxKeyStore {
         {
             use std::os::unix::fs::PermissionsExt;
             let perms = std::fs::Permissions::from_mode(0o600);
-            std::fs::set_permissions(&path, perms).map_err(|e| format!("Failed to set permissions: {e}"))?;
+            std::fs::set_permissions(&path, perms)
+                .map_err(|e| format!("Failed to set permissions: {e}"))?;
         }
         Ok(())
     }
@@ -268,7 +273,9 @@ impl SecureKeyStore for LinuxKeyStore {
             return Ok(None);
         }
         let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read key: {e}"))?;
-        String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
+        String::from_utf8(bytes)
+            .map_err(|e| format!("Invalid UTF-8: {e}"))
+            .map(Some)
     }
 
     fn delete(&self, account: &str) -> KeyStoreResult<()> {
@@ -313,7 +320,9 @@ impl SecureKeyStore for FallbackKeyStore {
             return Ok(None);
         }
         let bytes = std::fs::read(&path).map_err(|e| format!("Failed to read key: {e}"))?;
-        String::from_utf8(bytes).map_err(|e| format!("Invalid UTF-8: {e}")).map(Some)
+        String::from_utf8(bytes)
+            .map_err(|e| format!("Invalid UTF-8: {e}"))
+            .map(Some)
     }
 
     fn delete(&self, account: &str) -> KeyStoreResult<()> {

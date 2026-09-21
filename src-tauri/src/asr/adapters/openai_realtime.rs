@@ -120,14 +120,10 @@ impl OpenaiRealtimeAdapter {
     }
 
     /// Build the WebSocket request with auth headers.
-    fn build_request(
-        &self,
-        url: String,
-        api_key: &str,
-    ) -> anyhow::Result<impl IntoClientRequest> {
-        let mut request = url.into_client_request().map_err(|e| {
-            anyhow::anyhow!("Failed to build WS request: {}", e)
-        })?;
+    fn build_request(&self, url: String, api_key: &str) -> anyhow::Result<impl IntoClientRequest> {
+        let mut request = url
+            .into_client_request()
+            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {}", e))?;
         let headers = request.headers_mut();
         headers.insert(
             "Authorization",
@@ -136,10 +132,7 @@ impl OpenaiRealtimeAdapter {
                 .map_err(|_| anyhow::anyhow!("Invalid auth header"))?,
         );
         // OpenAI Realtime requires this beta header.
-        headers.insert(
-            "OpenAI-Beta",
-            "realtime=v1".parse().unwrap(),
-        );
+        headers.insert("OpenAI-Beta", "realtime=v1".parse().unwrap());
         Ok(request)
     }
 
@@ -181,9 +174,9 @@ impl AsrSession for OpenaiRealtimeAdapter {
         let url = self.build_url(&config);
         let request = self.build_request(url, &api_key)?;
 
-        let (ws_stream, _) = connect_async(request).await.map_err(|e| {
-            anyhow::anyhow!("OpenAI WS connection failed: {}", e)
-        })?;
+        let (ws_stream, _) = connect_async(request)
+            .await
+            .map_err(|e| anyhow::anyhow!("OpenAI WS connection failed: {}", e))?;
 
         let (mut ws_sink, mut ws_stream) = ws_stream.split();
 
@@ -198,12 +191,13 @@ impl AsrSession for OpenaiRealtimeAdapter {
 
         // Send session configuration immediately after connect.
         let session_update = self.build_session_update(&config);
-        let _ = ws_sink.send(Message::Text(session_update.to_string())).await;
+        let _ = ws_sink
+            .send(Message::Text(session_update.to_string()))
+            .await;
 
         // Spawn background WS task.
         tokio::spawn(async move {
-            let mut ping_interval =
-                tokio::time::interval(std::time::Duration::from_secs(30));
+            let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
             loop {
                 tokio::select! {
@@ -304,9 +298,10 @@ impl AsrSession for OpenaiRealtimeAdapter {
     }
 
     async fn push_audio(&mut self, frame: &[f32]) -> anyhow::Result<()> {
-        let sender = self.cmd_tx.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("OpenAI: not started")
-        })?;
+        let sender = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("OpenAI: not started"))?;
         // Convert f32 samples to PCM16, then base64 encode.
         let pcm_bytes: Vec<u8> = frame
             .iter()
@@ -324,15 +319,16 @@ impl AsrSession for OpenaiRealtimeAdapter {
     }
 
     async fn next_event(&mut self) -> anyhow::Result<Option<AsrEvent>> {
-        let receiver = self.event_rx.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("OpenAI: not started")
-        })?;
+        let receiver = self
+            .event_rx
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("OpenAI: not started"))?;
         match receiver.try_recv() {
             Ok(event) => Ok(Some(event)),
             Err(mpsc::error::TryRecvError::Empty) => Ok(None),
-            Err(mpsc::error::TryRecvError::Disconnected) => Err(anyhow::anyhow!(
-                "OpenAI: event channel disconnected"
-            )),
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                Err(anyhow::anyhow!("OpenAI: event channel disconnected"))
+            }
         }
     }
 
@@ -508,7 +504,10 @@ mod tests {
         let update = adapter.build_session_update(&config);
         assert_eq!(update["type"], "session.update");
         assert_eq!(update["session"]["input_audio_format"], "pcm16");
-        assert_eq!(update["session"]["input_audio_transcription"]["model"], "gpt-4o-transcribe");
+        assert_eq!(
+            update["session"]["input_audio_transcription"]["model"],
+            "gpt-4o-transcribe"
+        );
         assert_eq!(update["session"]["turn_detection"]["type"], "server_vad");
     }
 

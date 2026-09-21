@@ -11,8 +11,8 @@
 //! Legacy types (`StreamingAsrEngine`, `AsrResult`, `AsrConfig`, `AsrEngineType`)
 //! are re-exported from `engine_trait` for backward compatibility.
 
-use async_trait::async_trait;
 use super::engine_trait::{AsrConfig, StreamingAsrEngine};
+use async_trait::async_trait;
 
 // ── Normalized events ─────────────────────────────────────────────────
 
@@ -48,7 +48,10 @@ pub enum AsrEvent {
 impl AsrEvent {
     /// Whether this event carries finalized text (segment or utterance).
     pub fn is_final(&self) -> bool {
-        matches!(self, AsrEvent::SegmentFinal { .. } | AsrEvent::UtteranceFinal { .. })
+        matches!(
+            self,
+            AsrEvent::SegmentFinal { .. } | AsrEvent::UtteranceFinal { .. }
+        )
     }
 
     /// Whether this is an utterance final (injection trigger).
@@ -104,7 +107,6 @@ pub trait AsrSession: Send + Sync {
 ///
 /// The old `StreamingAsrEngine` / `AsrResult` types are preserved for backward
 /// compatibility during the migration. New code should use `AsrSession` / `AsrEvent`.
-
 
 /// Adapter: wraps a legacy `StreamingAsrEngine` as an `AsrSession`.
 /// This allows gradual migration — old adapters keep working while new ones
@@ -375,8 +377,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_fake_session_failure() {
-        let mut session = FakeAsrSession::new("fake", vec![])
-            .fail_after_pushes(3);
+        let mut session = FakeAsrSession::new("fake", vec![]).fail_after_pushes(3);
         session.start(test_config()).await.unwrap();
 
         session.push_audio(&[0.0; 100]).await.unwrap();

@@ -31,7 +31,8 @@ pub const TARGET_LATENCY_MS: u32 = 500;
 pub const ESTIMATED_FRAME_DURATION_MS: u32 = 64; // 1024 samples @ 16kHz
 
 /// Default audio queue capacity in frames.
-pub const DEFAULT_QUEUE_CAPACITY: usize = (TARGET_LATENCY_MS / ESTIMATED_FRAME_DURATION_MS) as usize;
+pub const DEFAULT_QUEUE_CAPACITY: usize =
+    (TARGET_LATENCY_MS / ESTIMATED_FRAME_DURATION_MS) as usize;
 
 /// Create a bounded audio channel with the default capacity.
 pub fn bounded_audio_channel() -> (
@@ -72,7 +73,6 @@ mod tests {
         assert_eq!(frame.sequence, 0);
         assert_eq!(frame.samples.len(), 1024);
     }
-
 
     #[test]
     fn test_bounded_channel_rejects_when_full() {
@@ -255,4 +255,4 @@ mod tests {
         // Remaining must be <= capacity (not growing unboundedly)
         assert!(remaining <= 5, "queue depth {} exceeds capacity", remaining);
     }
- }
+}

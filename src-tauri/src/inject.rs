@@ -35,7 +35,10 @@ impl InjectionResult {
     /// Whether this result represents a successful injection.
     #[allow(dead_code)]
     pub fn is_success(&self) -> bool {
-        matches!(self, InjectionResult::Injected | InjectionResult::ClipboardFallback)
+        matches!(
+            self,
+            InjectionResult::Injected | InjectionResult::ClipboardFallback
+        )
     }
 
     /// Whether the user should be prompted to manually paste.
@@ -224,9 +227,15 @@ fn send_paste(enigo: &mut enigo::Enigo) -> Result<(), String> {
     #[cfg(target_os = "linux")]
     let (modif, vkey) = (enigo::Key::Control, enigo::Key::Unicode('v'));
 
-    enigo.key(modif, enigo::Direction::Press).map_err(|e| format!("{e}"))?;
-    enigo.key(vkey, enigo::Direction::Click).map_err(|e| format!("{e}"))?;
-    enigo.key(modif, enigo::Direction::Release).map_err(|e| format!("{e}"))?;
+    enigo
+        .key(modif, enigo::Direction::Press)
+        .map_err(|e| format!("{e}"))?;
+    enigo
+        .key(vkey, enigo::Direction::Click)
+        .map_err(|e| format!("{e}"))?;
+    enigo
+        .key(modif, enigo::Direction::Release)
+        .map_err(|e| format!("{e}"))?;
     Ok(())
 }
 
@@ -294,7 +303,10 @@ mod tests {
         assert!(InjectionResult::ClipboardFallback.is_success());
         assert!(!InjectionResult::PermissionDenied.is_success());
         assert!(!InjectionResult::TargetUnavailable.is_success());
-        assert!(!InjectionResult::Failed { reason: "test".into() }.is_success());
+        assert!(!InjectionResult::Failed {
+            reason: "test".into()
+        }
+        .is_success());
     }
 
     #[test]
@@ -307,23 +319,17 @@ mod tests {
     #[test]
     fn test_injection_result_messages() {
         assert_eq!(InjectionResult::Injected.message(), "文本已注入");
-        assert!(
-            InjectionResult::PermissionDenied
-                .message()
-                .contains("权限不足")
-        );
-        assert!(
-            InjectionResult::TargetUnavailable
-                .message()
-                .contains("没有找到")
-        );
-        assert!(
-            InjectionResult::Failed {
-                reason: "test error".into()
-            }
+        assert!(InjectionResult::PermissionDenied
             .message()
-            .contains("test error")
-        );
+            .contains("权限不足"));
+        assert!(InjectionResult::TargetUnavailable
+            .message()
+            .contains("没有找到"));
+        assert!(InjectionResult::Failed {
+            reason: "test error".into()
+        }
+        .message()
+        .contains("test error"));
     }
 
     #[test]

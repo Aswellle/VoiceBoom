@@ -4,7 +4,9 @@
 //! backward compatibility via `LegacySessionAdapter` for adapters that
 //! still implement the old `StreamingAsrEngine` trait.
 
-use super::adapters::{openai_realtime::OpenaiRealtimeAdapter, deepgram::DeepgramAdapter, local::LocalAsrAdapter};
+use super::adapters::{
+    deepgram::DeepgramAdapter, local::LocalAsrAdapter, openai_realtime::OpenaiRealtimeAdapter,
+};
 use super::engine_trait::{AsrConfig, AsrEngineType, AsrResult, StreamingAsrEngine};
 use super::session::{AsrEvent, AsrSession, LegacySessionAdapter};
 use std::sync::Arc;
@@ -33,11 +35,15 @@ impl AsrManager {
         let is_local = matches!(config.engine_type, AsrEngineType::LocalSenseVoice);
         let can_reuse = is_local
             && self.session.is_some()
-            && self.config.as_ref().map(|prev| {
-                prev.engine_type == config.engine_type
-                    && prev.language == config.language
-                    && prev.vad_sensitivity == config.vad_sensitivity
-            }).unwrap_or(false);
+            && self
+                .config
+                .as_ref()
+                .map(|prev| {
+                    prev.engine_type == config.engine_type
+                        && prev.language == config.language
+                        && prev.vad_sensitivity == config.vad_sensitivity
+                })
+                .unwrap_or(false);
 
         if can_reuse {
             return Ok(());
@@ -97,7 +103,10 @@ impl AsrManager {
                 confidence: None,
             },
             AsrEvent::SegmentFinal {
-                text, language, confidence, ..
+                text,
+                language,
+                confidence,
+                ..
             } => AsrResult {
                 text,
                 is_final: true,
@@ -105,7 +114,10 @@ impl AsrManager {
                 confidence,
             },
             AsrEvent::UtteranceFinal {
-                text, language, confidence, ..
+                text,
+                language,
+                confidence,
+                ..
             } => AsrResult {
                 text,
                 is_final: true,
@@ -127,10 +139,7 @@ impl AsrManager {
     /// 1. Call session.finalize() to signal end of audio (no sleep)
     /// 2. Loop draining events until utterance-final or timeout
     /// 3. If timeout, return timeout=true so caller can emit finalization_timeout
-    pub async fn finalize_and_drain(
-        &self,
-        timeout: std::time::Duration,
-    ) -> (Vec<AsrEvent>, bool) {
+    pub async fn finalize_and_drain(&self, timeout: std::time::Duration) -> (Vec<AsrEvent>, bool) {
         let mut events = Vec::new();
         let mut timed_out = false;
 
@@ -148,7 +157,10 @@ impl AsrManager {
             let now = tokio::time::Instant::now();
             if now > deadline {
                 timed_out = true;
-                log::warn!("[AsrManager] finalize_and_drain timeout after {:?}", timeout);
+                log::warn!(
+                    "[AsrManager] finalize_and_drain timeout after {:?}",
+                    timeout
+                );
                 break;
             }
             let _remaining = deadline - now;
@@ -157,11 +169,12 @@ impl AsrManager {
             let event = match tokio::time::timeout(
                 std::time::Duration::from_millis(100),
                 self.receive_event(),
-            ).await
+            )
+            .await
             {
                 Ok(Ok(event)) => event,
                 Ok(Err(_)) => break, // channel error
-                Err(_) => continue, // timeout on this poll iteration
+                Err(_) => continue,  // timeout on this poll iteration
             };
 
             match event {
@@ -185,7 +198,9 @@ impl AsrManager {
 
     /// Legacy compatibility: flush returning AsrResult.
     pub async fn flush(&self) -> anyhow::Result<Option<AsrResult>> {
-        let (events, _timed_out) = self.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events, _timed_out) = self
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
         // Return the last final event as AsrResult.
         for e in events.iter().rev() {
             if e.is_final() {
@@ -228,7 +243,7 @@ impl AsrManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asr::session::{AsrEvent, FakeAsrSession, AsrSession};
+    use crate::asr::session::{AsrEvent, AsrSession, FakeAsrSession};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -246,16 +261,28 @@ mod tests {
     /// Gate 9: Test that finalize_and_drain collects events until utterance-final.
     #[tokio::test]
     async fn test_finalize_and_drain_collects_events() {
-        let fake = FakeAsrSession::new("fake", vec![
-            AsrEvent::Partial { text: "hello".into(), language: None },
-            AsrEvent::UtteranceFinal { text: "hello world".into(), language: None, confidence: None },
-        ]);
+        let fake = FakeAsrSession::new(
+            "fake",
+            vec![
+                AsrEvent::Partial {
+                    text: "hello".into(),
+                    language: None,
+                },
+                AsrEvent::UtteranceFinal {
+                    text: "hello world".into(),
+                    language: None,
+                    confidence: None,
+                },
+            ],
+        );
         let mgr = AsrManager {
             session: Some(Arc::new(Mutex::new(Box::new(fake)))),
             config: Some(test_config()),
         };
 
-        let (events, timed_out) = mgr.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events, timed_out) = mgr
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
         assert!(!events.is_empty());
         assert!(!timed_out);
     }
@@ -269,7 +296,9 @@ mod tests {
             config: Some(test_config()),
         };
 
-        let (events, timed_out) = mgr.finalize_and_drain(std::time::Duration::from_millis(200)).await;
+        let (events, timed_out) = mgr
+            .finalize_and_drain(std::time::Duration::from_millis(200))
+            .await;
         assert!(timed_out);
         assert!(events.is_empty());
     }
@@ -283,7 +312,9 @@ mod tests {
             config: Some(test_config()),
         };
 
-        let (events, timed_out) = mgr.finalize_and_drain(std::time::Duration::from_millis(200)).await;
+        let (events, timed_out) = mgr
+            .finalize_and_drain(std::time::Duration::from_millis(200))
+            .await;
         assert!(timed_out);
         assert!(events.is_empty());
     }
@@ -291,19 +322,28 @@ mod tests {
     /// Gate 9: Test repeated stop (flush called multiple times).
     #[tokio::test]
     async fn test_repeated_flush() {
-        let fake = FakeAsrSession::new("fake", vec![
-            AsrEvent::UtteranceFinal { text: "done".into(), language: None, confidence: None },
-        ]);
+        let fake = FakeAsrSession::new(
+            "fake",
+            vec![AsrEvent::UtteranceFinal {
+                text: "done".into(),
+                language: None,
+                confidence: None,
+            }],
+        );
         let mgr = AsrManager {
             session: Some(Arc::new(Mutex::new(Box::new(fake)))),
             config: Some(test_config()),
         };
 
-        let (events1, timed_out1) = mgr.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events1, timed_out1) = mgr
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
         assert!(!events1.is_empty());
         assert!(!timed_out1);
 
-        let (events2, timed_out2) = mgr.finalize_and_drain(std::time::Duration::from_millis(200)).await;
+        let (events2, timed_out2) = mgr
+            .finalize_and_drain(std::time::Duration::from_millis(200))
+            .await;
         assert!(timed_out2);
     }
 
@@ -317,11 +357,16 @@ mod tests {
             config: Some(test_config()),
         };
 
-        let (_events, _timed_out) = mgr.finalize_and_drain(std::time::Duration::from_millis(100)).await;
+        let (_events, _timed_out) = mgr
+            .finalize_and_drain(std::time::Duration::from_millis(100))
+            .await;
         let elapsed = start.elapsed();
 
         // Should complete near the timeout, not a fixed 500ms sleep.
-        assert!(elapsed < std::time::Duration::from_millis(500),
-            "finalize_and_drain took {:?}, expected < 500ms", elapsed);
+        assert!(
+            elapsed < std::time::Duration::from_millis(500),
+            "finalize_and_drain took {:?}, expected < 500ms",
+            elapsed
+        );
     }
 }

@@ -16,6 +16,6 @@ pub mod model;
 
 pub use controller::InjectionController;
 pub use model::{
-    InjectionKey, InjectionMethod, InjectionMode, InjectionResult,
-    InjectionTarget, TargetValidation,
+    InjectionKey, InjectionMethod, InjectionMode, InjectionResult, InjectionTarget,
+    TargetValidation,
 };

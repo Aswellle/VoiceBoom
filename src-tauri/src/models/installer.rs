@@ -80,7 +80,8 @@ pub fn install_from_archive(
         });
         std::fs::write(
             &manifest_path,
-            serde_json::to_vec_pretty(&manifest).map_err(|e| format!("序列化 manifest 失败: {e}"))?,
+            serde_json::to_vec_pretty(&manifest)
+                .map_err(|e| format!("序列化 manifest 失败: {e}"))?,
         )
         .map_err(|e| format!("写入 manifest 失败: {e}"))?;
     }
@@ -160,13 +161,8 @@ pub fn install_from_dir(
             std::fs::create_dir_all(parent).ok();
         }
         verify_file(&src, &expected.sha256, expected.size)?;
-        std::fs::copy(&src, &dst).map_err(|e| {
-            format!(
-                "复制失败 {} → {}: {e}",
-                src.display(),
-                dst.display()
-            )
-        })?;
+        std::fs::copy(&src, &dst)
+            .map_err(|e| format!("复制失败 {} → {}: {e}", src.display(), dst.display()))?;
     }
 
     // Write manifest.json.
@@ -201,7 +197,10 @@ pub fn remove_version(models_dir: &Path, engine: &str, version: &str) -> Result<
     // Remove empty engine dir.
     let engine_dir = models_dir.join(engine);
     if engine_dir.exists() {
-        if std::fs::read_dir(&engine_dir).map(|mut d| d.next().is_none()).unwrap_or(false) {
+        if std::fs::read_dir(&engine_dir)
+            .map(|mut d| d.next().is_none())
+            .unwrap_or(false)
+        {
             std::fs::remove_dir_all(&engine_dir).ok();
         }
     }
@@ -212,8 +211,7 @@ pub fn remove_version(models_dir: &Path, engine: &str, version: &str) -> Result<
 fn extract_zip(archive_path: &Path, dest: &Path) -> Result<(), String> {
     let file = std::fs::File::open(archive_path)
         .map_err(|e| format!("打开压缩包失败 {}: {e}", archive_path.display()))?;
-    let mut archive =
-        zip::ZipArchive::new(file).map_err(|e| format!("解析 zip 失败: {e}"))?;
+    let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("解析 zip 失败: {e}"))?;
 
     for i in 0..archive.len() {
         let mut entry = archive
@@ -255,11 +253,13 @@ mod tests {
             let f = std::fs::File::create(&archive).unwrap();
             let mut z = zip::ZipWriter::new(f);
             let opts = zip::write::FileOptions::<()>::default();
-            z.start_file("sensevoice/1.0.0/model.int8.onnx", opts).unwrap();
+            z.start_file("sensevoice/1.0.0/model.int8.onnx", opts)
+                .unwrap();
             z.write_all(b"model-bytes").unwrap();
             z.start_file("sensevoice/1.0.0/tokens.txt", opts).unwrap();
             z.write_all(b"token-bytes").unwrap();
-            z.start_file("sensevoice/1.0.0/silero_vad.onnx", opts).unwrap();
+            z.start_file("sensevoice/1.0.0/silero_vad.onnx", opts)
+                .unwrap();
             z.write_all(b"vad-bytes").unwrap();
             z.finish().unwrap();
         }
@@ -296,13 +296,7 @@ mod tests {
 
         let models_dir = dir.join("models");
         let version_dir = models_dir.join("sensevoice").join("1.0.0");
-        let result = install_from_archive(
-            &archive,
-            &models_dir,
-            "sensevoice",
-            "1.0.0",
-            &expected,
-        );
+        let result = install_from_archive(&archive, &models_dir, "sensevoice", "1.0.0", &expected);
         assert!(result.is_ok(), "install failed: {:?}", result.err());
         assert!(version_dir.join("model.int8.onnx").exists());
         assert!(version_dir.join("manifest.json").exists());

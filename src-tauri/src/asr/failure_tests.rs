@@ -14,7 +14,7 @@
 #[cfg(test)]
 mod failure_tests {
     use crate::asr::aggregator::TranscriptAggregator;
-    use crate::asr::session::{AsrEvent, FakeAsrSession, AsrSession};
+    use crate::asr::session::{AsrEvent, AsrSession, FakeAsrSession};
     use crate::asr::streaming::AsrManager;
     use crate::session::{RecordingSession, RecordingState};
     use std::sync::Arc;
@@ -34,8 +34,7 @@ mod failure_tests {
     fn make_manager(events: Vec<AsrEvent>) -> AsrManager {
         AsrManager {
             session: Some(Arc::new(Mutex::new(Box::new(FakeAsrSession::new(
-                "fake",
-                events,
+                "fake", events,
             ))))),
             config: Some(test_config()),
         }
@@ -121,7 +120,9 @@ mod failure_tests {
         // Simulate network disconnect: no events, timeout
         let manager = make_manager(vec![]);
 
-        let (events, timed_out) = manager.finalize_and_drain(std::time::Duration::from_millis(100)).await;
+        let (events, timed_out) = manager
+            .finalize_and_drain(std::time::Duration::from_millis(100))
+            .await;
 
         assert!(events.is_empty());
         assert!(timed_out);
@@ -130,15 +131,15 @@ mod failure_tests {
     #[tokio::test]
     async fn test_flush_with_api_error() {
         // Simulate API error: error event received
-        let manager = make_manager(vec![
-            AsrEvent::Error {
-                code: "API_401".into(),
-                message: "Unauthorized".into(),
-                retryable: false,
-            },
-        ]);
+        let manager = make_manager(vec![AsrEvent::Error {
+            code: "API_401".into(),
+            message: "Unauthorized".into(),
+            retryable: false,
+        }]);
 
-        let (events, timed_out) = manager.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events, timed_out) = manager
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
 
         // Error event should be collected
         assert_eq!(events.len(), 1);
@@ -150,17 +151,23 @@ mod failure_tests {
     #[tokio::test]
     async fn test_flush_with_api_rate_limit() {
         // Simulate API 429: retryable error
-        let manager = make_manager(vec![
-            AsrEvent::Error {
-                code: "API_429".into(),
-                message: "Rate limited".into(),
-                retryable: true,
-            },
-        ]);
+        let manager = make_manager(vec![AsrEvent::Error {
+            code: "API_429".into(),
+            message: "Rate limited".into(),
+            retryable: true,
+        }]);
 
-        let (events, _) = manager.finalize_and_drain(std::time::Duration::from_secs(5)).await;
+        let (events, _) = manager
+            .finalize_and_drain(std::time::Duration::from_secs(5))
+            .await;
         assert_eq!(events.len(), 1);
-        assert!(matches!(&events[0], AsrEvent::Error { retryable: true, .. }));
+        assert!(matches!(
+            &events[0],
+            AsrEvent::Error {
+                retryable: true,
+                ..
+            }
+        ));
     }
 
     // ── Model File Failure Tests ────────────────────────────────────────
@@ -202,8 +209,15 @@ mod failure_tests {
         let mut agg = TranscriptAggregator::new();
 
         // Partial received
-        agg.process_event(&AsrEvent::Partial { text: "hello".into(), language: None });
-        agg.process_event(&AsrEvent::UtteranceFinal { text: "hello".into(), language: None, confidence: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "hello".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::UtteranceFinal {
+            text: "hello".into(),
+            language: None,
+            confidence: None,
+        });
 
         // Injection permission denied doesn't affect aggregator state
         assert_eq!(agg.committed_text(), "hello");
@@ -217,7 +231,10 @@ mod failure_tests {
         let mut agg = TranscriptAggregator::new();
 
         // Partial then error
-        agg.process_event(&AsrEvent::Partial { text: "hello".into(), language: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "hello".into(),
+            language: None,
+        });
         agg.process_event(&AsrEvent::Error {
             code: "WS_DISCONNECT".into(),
             message: "Connection lost".into(),
@@ -235,7 +252,10 @@ mod failure_tests {
         let mut agg = TranscriptAggregator::new();
 
         // Error in previous utterance
-        agg.process_event(&AsrEvent::Partial { text: "failed".into(), language: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "failed".into(),
+            language: None,
+        });
         agg.process_event(&AsrEvent::Error {
             code: "TIMEOUT".into(),
             message: "timeout".into(),
@@ -247,8 +267,15 @@ mod failure_tests {
         agg.reset(None);
 
         // New utterance works normally
-        agg.process_event(&AsrEvent::Partial { text: "success".into(), language: None });
-        agg.process_event(&AsrEvent::UtteranceFinal { text: "success".into(), language: None, confidence: None });
+        agg.process_event(&AsrEvent::Partial {
+            text: "success".into(),
+            language: None,
+        });
+        agg.process_event(&AsrEvent::UtteranceFinal {
+            text: "success".into(),
+            language: None,
+            confidence: None,
+        });
 
         assert_eq!(agg.committed_text(), "success");
         assert!(agg.is_utterance_finalized());
@@ -298,7 +325,9 @@ mod failure_tests {
             // Empty/malformed events are simply not emitted by FakeAsrSession
         ]);
 
-        let (events, _) = manager.finalize_and_drain(std::time::Duration::from_millis(100)).await;
+        let (events, _) = manager
+            .finalize_and_drain(std::time::Duration::from_millis(100))
+            .await;
         assert!(events.is_empty());
     }
 

@@ -140,9 +140,18 @@ mod tests {
 
     fn test_configs() -> Vec<(ProviderId, ProviderConfig)> {
         vec![
-            (ProviderId::LocalSenseVoice, ProviderConfig::new(ProviderId::LocalSenseVoice)),
-            (ProviderId::OpenAIRealtime, ProviderConfig::new(ProviderId::OpenAIRealtime)),
-            (ProviderId::DeepgramStreaming, ProviderConfig::new(ProviderId::DeepgramStreaming)),
+            (
+                ProviderId::LocalSenseVoice,
+                ProviderConfig::new(ProviderId::LocalSenseVoice),
+            ),
+            (
+                ProviderId::OpenAIRealtime,
+                ProviderConfig::new(ProviderId::OpenAIRealtime),
+            ),
+            (
+                ProviderId::DeepgramStreaming,
+                ProviderConfig::new(ProviderId::DeepgramStreaming),
+            ),
         ]
     }
 
@@ -229,23 +238,23 @@ mod tests {
     #[test]
     fn test_resolve_cloud_defaults_to_openai_without_preference() {
         let configs = test_configs();
-        let result = ProviderRegistry::resolve(
-            ProviderMode::Cloud,
-            true,
-            &configs,
-            None,
-        );
+        let result = ProviderRegistry::resolve(ProviderMode::Cloud, true, &configs, None);
         assert!(result.is_some());
         assert_eq!(result.unwrap().provider, ProviderId::OpenAIRealtime);
     }
 
     #[test]
     fn test_list_status_includes_local() {
-        let configs = vec![(ProviderId::OpenAIRealtime, ProviderConfig::new(ProviderId::OpenAIRealtime))];
+        let configs = vec![(
+            ProviderId::OpenAIRealtime,
+            ProviderConfig::new(ProviderId::OpenAIRealtime),
+        )];
         let statuses = ProviderRegistry::list_status(&configs);
         // Local should be auto-inserted even if not in configs.
         assert!(statuses.iter().any(|s| s.is_local));
-        assert!(statuses.iter().any(|s| s.provider == ProviderId::OpenAIRealtime));
+        assert!(statuses
+            .iter()
+            .any(|s| s.provider == ProviderId::OpenAIRealtime));
     }
 
     #[test]

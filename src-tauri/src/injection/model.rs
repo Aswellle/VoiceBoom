@@ -145,13 +145,9 @@ pub enum InjectionResult {
         captured: String, // exe name
     },
     /// Permission denied (elevated target / UIPI).
-    PermissionDenied {
-        reason: String,
-    },
+    PermissionDenied { reason: String },
     /// Fell back to clipboard.
-    ClipboardFallback {
-        reason: String,
-    },
+    ClipboardFallback { reason: String },
     /// Duplicate injection ignored.
     DuplicateIgnored,
     /// Stale session result ignored.
@@ -159,9 +155,7 @@ pub enum InjectionResult {
     /// No focused input field available.
     TargetUnavailable,
     /// Injection failed.
-    Failed {
-        reason: String,
-    },
+    Failed { reason: String },
 }
 
 impl InjectionResult {

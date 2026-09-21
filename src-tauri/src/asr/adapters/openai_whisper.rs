@@ -42,9 +42,10 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
 
         // Extract API key for authentication (C4 fix)
         let api_key = config.api_key.clone().unwrap_or_default();
-        let endpoint = config.endpoint.clone().unwrap_or_else(|| {
-            "wss://api.openai.com/v1/audio/transcriptions".to_string()
-        });
+        let endpoint = config
+            .endpoint
+            .clone()
+            .unwrap_or_else(|| "wss://api.openai.com/v1/audio/transcriptions".to_string());
         let language = config.language.clone();
 
         tokio::spawn(async move {
@@ -67,7 +68,8 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
                     log::info!("Connected to OpenAI Whisper WebSocket");
 
                     // M8 fix: Keepalive ping interval to prevent NAT timeout
-                    let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
+                    let mut ping_interval =
+                        tokio::time::interval(std::time::Duration::from_secs(30));
 
                     loop {
                         tokio::select! {
@@ -131,7 +133,9 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
     async fn send_audio(&mut self, audio_data: &[f32]) -> anyhow::Result<()> {
         if let Some(sender) = &self.ws_sender {
             let data = audio_data.to_vec();
-            sender.send(data).map_err(|_| anyhow::anyhow!("WS channel closed"))?;
+            sender
+                .send(data)
+                .map_err(|_| anyhow::anyhow!("WS channel closed"))?;
         }
         Ok(())
     }

@@ -75,9 +75,7 @@ pub async fn download(
 
     // Determine resume point.
     let resume_from = if part_path.exists() {
-        std::fs::metadata(&part_path)
-            .map(|m| m.len())
-            .unwrap_or(0)
+        std::fs::metadata(&part_path).map(|m| m.len()).unwrap_or(0)
     } else {
         0
     };
@@ -130,10 +128,7 @@ async fn attempt_download(
         request = request.header("Range", format!("bytes={resume_from}-"));
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {e}"))?;
+    let response = request.send().await.map_err(|e| format!("请求失败: {e}"))?;
 
     let status = response.status();
     if !status.is_success() && status != reqwest::StatusCode::PARTIAL_CONTENT {

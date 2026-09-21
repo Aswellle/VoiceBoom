@@ -1,13 +1,13 @@
 // System tray module — creates and manages the VoiceBoom tray icon and menu
 // Provides quick access to settings, engine/language switching, and window control
 
+use crate::commands;
+use tauri::Emitter;
 use tauri::{
     menu::{CheckMenuItem, Menu, MenuItem, Submenu, SubmenuBuilder},
     tray::{MouseButton, MouseButtonState, TrayIcon, TrayIconBuilder, TrayIconEvent},
     AppHandle, Manager,
 };
-use tauri::Emitter;
-use crate::commands;
 
 // Use the Wry runtime type alias from tauri
 type Runtime = tauri::Wry;
@@ -56,10 +56,38 @@ pub fn create_tray(app: &AppHandle<Runtime>) -> tauri::Result<TrayIcon<Runtime>>
 
 /// Create the ASR engine selection submenu
 fn create_engine_submenu(app: &AppHandle<Runtime>) -> tauri::Result<Submenu<Runtime>> {
-    let whisper = CheckMenuItem::with_id(app, "engine_whisper", "OpenAI Whisper API", true, true, None::<&str>)?;
-    let deepgram = CheckMenuItem::with_id(app, "engine_deepgram", "Deepgram", true, false, None::<&str>)?;
-    let whisper_cpp = CheckMenuItem::with_id(app, "engine_whisper_cpp", "Whisper.cpp (本地)", true, false, None::<&str>)?;
-    let funasr = CheckMenuItem::with_id(app, "engine_funasr", "FunASR (本地)", true, false, None::<&str>)?;
+    let whisper = CheckMenuItem::with_id(
+        app,
+        "engine_whisper",
+        "OpenAI Whisper API",
+        true,
+        true,
+        None::<&str>,
+    )?;
+    let deepgram = CheckMenuItem::with_id(
+        app,
+        "engine_deepgram",
+        "Deepgram",
+        true,
+        false,
+        None::<&str>,
+    )?;
+    let whisper_cpp = CheckMenuItem::with_id(
+        app,
+        "engine_whisper_cpp",
+        "Whisper.cpp (本地)",
+        true,
+        false,
+        None::<&str>,
+    )?;
+    let funasr = CheckMenuItem::with_id(
+        app,
+        "engine_funasr",
+        "FunASR (本地)",
+        true,
+        false,
+        None::<&str>,
+    )?;
 
     let submenu = SubmenuBuilder::with_id(app, "engine", "ASR 引擎")
         .items(&[&whisper, &deepgram, &whisper_cpp, &funasr])

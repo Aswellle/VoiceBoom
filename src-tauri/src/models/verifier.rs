@@ -138,7 +138,11 @@ mod tests {
         assert_eq!(v.sha256, expected);
 
         // Wrong hash should fail.
-        let bad = verify_file(&path, "0000000000000000000000000000000000000000000000000000000000000000", 12);
+        let bad = verify_file(
+            &path,
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            12,
+        );
         assert!(bad.is_err());
 
         // Wrong size should fail.

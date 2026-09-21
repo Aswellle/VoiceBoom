@@ -1,22 +1,22 @@
-mod session;
 mod secure_keystore;
+mod session;
 
 pub use session::{RecordingSession, RecordingState, SessionHandle};
 
-mod audio;
 mod asr;
+mod audio;
 mod commands;
 mod db;
 mod inject;
 mod injection;
+mod models;
+mod provider;
 mod resources;
 mod shortcut;
 mod tray;
-mod models;
-mod provider;
 
-use audio::capture::AudioCapture;
 use asr::streaming::AsrManager;
+use audio::capture::AudioCapture;
 use db::Database;
 use resources::ResourceManager;
 use shortcut::GlobalShortcutManager;
@@ -113,11 +113,7 @@ impl AppState {
             db: std::sync::Mutex::new(None),
             shortcut_manager: std::sync::Mutex::new(None),
             resource_manager: std::sync::Mutex::new(None),
-            session: session::new_session_handle(
-                "init".into(),
-                String::new(),
-                String::new(),
-            ),
+            session: session::new_session_handle("init".into(), String::new(), String::new()),
             injection_controller: std::sync::Mutex::new(
                 crate::injection::InjectionController::new(),
             ),
@@ -128,8 +124,7 @@ impl AppState {
     }
 }
 
-
- #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize file-based logging so we can diagnose runtime issues in the
     // released GUI app (stderr is invisible there).
@@ -223,7 +218,10 @@ pub fn run() {
 
             let resource_manager = ResourceManager::new(resource_dir);
             *app.state::<AppState>().resource_manager.lock().unwrap() = Some(resource_manager);
-            log::info!("Resource manager initialized at: {:?}", resources::default_resource_dir(&app_dir));
+            log::info!(
+                "Resource manager initialized at: {:?}",
+                resources::default_resource_dir(&app_dir)
+            );
 
             // Phase 2: Initialize model manager with the app-data models directory.
             let models_dir = app_dir.join("models");

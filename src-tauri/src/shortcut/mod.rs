@@ -33,9 +33,9 @@ impl GlobalShortcutManager {
         let gs = self.app_handle.global_shortcut();
 
         // Step 1: Validate new shortcut can be parsed.
-        let new_sc: Shortcut = shortcut.parse().map_err(|e| {
-            anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e)
-        })?;
+        let new_sc: Shortcut = shortcut
+            .parse()
+            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e))?;
 
         // If same shortcut is already registered, no-op.
         if self.current_shortcut.as_deref() == Some(shortcut) {
@@ -89,9 +89,9 @@ impl GlobalShortcutManager {
         let prev_shortcut = self.current_shortcut.clone();
 
         // Validate.
-        let new_sc: Shortcut = shortcut.parse().map_err(|e| {
-            anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e)
-        })?;
+        let new_sc: Shortcut = shortcut
+            .parse()
+            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e))?;
 
         // No-op if same.
         if self.current_shortcut.as_deref() == Some(shortcut) {

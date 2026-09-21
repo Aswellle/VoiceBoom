@@ -24,19 +24,25 @@ impl ProviderCredentialStore {
     /// Store a credential for a provider. Returns the credential_ref used.
     pub fn store(_provider: ProviderId, credential_ref: &str, api_key: &str) -> Result<(), String> {
         let store = secure_keystore::platform_key_store();
-        store.store(credential_ref, api_key).map_err(|e| format!("存储凭证失败: {e}"))
+        store
+            .store(credential_ref, api_key)
+            .map_err(|e| format!("存储凭证失败: {e}"))
     }
 
     /// Retrieve a credential by ref.
     pub fn retrieve(credential_ref: &str) -> Result<Option<String>, String> {
         let store = secure_keystore::platform_key_store();
-        store.retrieve(credential_ref).map_err(|e| format!("读取凭证失败: {e}"))
+        store
+            .retrieve(credential_ref)
+            .map_err(|e| format!("读取凭证失败: {e}"))
     }
 
     /// Delete a credential.
     pub fn delete(credential_ref: &str) -> Result<(), String> {
         let store = secure_keystore::platform_key_store();
-        store.delete(credential_ref).map_err(|e| format!("删除凭证失败: {e}"))
+        store
+            .delete(credential_ref)
+            .map_err(|e| format!("删除凭证失败: {e}"))
     }
 
     /// Check whether a credential exists for the given ref.

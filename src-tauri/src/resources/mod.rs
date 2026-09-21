@@ -2,8 +2,8 @@
 // Manages bundled ONNX models for sherpa-onnx inference
 // Models are bundled with the app or downloaded separately
 
-use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
+use std::path::{Path, PathBuf};
 use tauri;
 
 /// Supported local ASR engines (sherpa-onnx based)
@@ -180,7 +180,10 @@ impl ResourceManager {
 
     /// Get the ONNX model file path
     pub fn model_path(&self, engine: ResourceEngine) -> Option<PathBuf> {
-        find_in_dirs(&self.model_search_dirs(engine), engine.default_model_filename())
+        find_in_dirs(
+            &self.model_search_dirs(engine),
+            engine.default_model_filename(),
+        )
     }
 
     /// Get the tokens file path

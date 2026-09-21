@@ -153,79 +153,75 @@ impl AudioCapture {
             let resample_ratio = input_sample_rate as f32 / TARGET_SAMPLE_RATE as f32;
             let mut resample_pos: f32 = 0.0;
 
-            let stream_result: Result<cpal::Stream, cpal::BuildStreamError> =
-                match sample_format {
-                    SampleFormat::F32 => device.build_input_stream(
-                        &config,
-                        move |data: &[f32], &_| {
-                            if !is_recording_cb.load(Ordering::SeqCst) {
-                                return;
-                            }
-                            // Downmix to mono first
-                            let mono: Vec<f32> = data
-                                .chunks(channels)
-                                .map(|frame| frame.iter().sum::<f32>() / channels as f32)
-                                .collect();
-                            // Resample to target rate using linear interpolation
-                            let resampled =
-                                resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            send_frame(resampled);
-                        },
-                        err_fn,
-                        None,
-                    ),
-                    SampleFormat::I16 => device.build_input_stream(
-                        &config,
-                        move |data: &[i16], &_| {
-                            if !is_recording_cb.load(Ordering::SeqCst) {
-                                return;
-                            }
-                            let mono: Vec<f32> = data
-                                .chunks(channels)
-                                .map(|frame| {
-                                    frame
-                                        .iter()
-                                        .map(|&s| s as f32 / i16::MAX as f32)
-                                        .sum::<f32>()
-                                        / channels as f32
-                                })
-                                .collect();
-                            let resampled =
-                                resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            send_frame(resampled);
-                        },
-                        err_fn,
-                        None,
-                    ),
-                    SampleFormat::U16 => device.build_input_stream(
-                        &config,
-                        move |data: &[u16], &_| {
-                            if !is_recording_cb.load(Ordering::SeqCst) {
-                                return;
-                            }
-                            let mono: Vec<f32> = data
-                                .chunks(channels)
-                                .map(|frame| {
-                                    frame
-                                        .iter()
-                                        .map(|&s| (s as f32 - 32768.0) / 32768.0)
-                                        .sum::<f32>()
-                                        / channels as f32
-                                })
-                                .collect();
-                            let resampled =
-                                resample_linear(&mono, resample_ratio, &mut resample_pos);
-                            send_frame(resampled);
-                        },
-                        err_fn,
-                        None,
-                    ),
-                    _ => {
-                        eprintln!("Unsupported sample format");
-                        let _ = startup_tx.send(false);
-                        return;
-                    }
-                };
+            let stream_result: Result<cpal::Stream, cpal::BuildStreamError> = match sample_format {
+                SampleFormat::F32 => device.build_input_stream(
+                    &config,
+                    move |data: &[f32], &_| {
+                        if !is_recording_cb.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        // Downmix to mono first
+                        let mono: Vec<f32> = data
+                            .chunks(channels)
+                            .map(|frame| frame.iter().sum::<f32>() / channels as f32)
+                            .collect();
+                        // Resample to target rate using linear interpolation
+                        let resampled = resample_linear(&mono, resample_ratio, &mut resample_pos);
+                        send_frame(resampled);
+                    },
+                    err_fn,
+                    None,
+                ),
+                SampleFormat::I16 => device.build_input_stream(
+                    &config,
+                    move |data: &[i16], &_| {
+                        if !is_recording_cb.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        let mono: Vec<f32> = data
+                            .chunks(channels)
+                            .map(|frame| {
+                                frame
+                                    .iter()
+                                    .map(|&s| s as f32 / i16::MAX as f32)
+                                    .sum::<f32>()
+                                    / channels as f32
+                            })
+                            .collect();
+                        let resampled = resample_linear(&mono, resample_ratio, &mut resample_pos);
+                        send_frame(resampled);
+                    },
+                    err_fn,
+                    None,
+                ),
+                SampleFormat::U16 => device.build_input_stream(
+                    &config,
+                    move |data: &[u16], &_| {
+                        if !is_recording_cb.load(Ordering::SeqCst) {
+                            return;
+                        }
+                        let mono: Vec<f32> = data
+                            .chunks(channels)
+                            .map(|frame| {
+                                frame
+                                    .iter()
+                                    .map(|&s| (s as f32 - 32768.0) / 32768.0)
+                                    .sum::<f32>()
+                                    / channels as f32
+                            })
+                            .collect();
+                        let resampled = resample_linear(&mono, resample_ratio, &mut resample_pos);
+                        send_frame(resampled);
+                    },
+                    err_fn,
+                    None,
+                ),
+                _ => {
+                    eprintln!("Unsupported sample format");
+                    let _ = startup_tx.send(false);
+                    return;
+                }
+            };
 
             let stream = match stream_result {
                 Ok(s) => s,
@@ -336,7 +332,11 @@ fn resample_linear(input: &[f32], ratio: f32, pos: &mut f32) -> Vec<f32> {
     // picking each sample, attenuating frequencies above the output Nyquist
     // rate that would otherwise alias into the speech band (e.g. a 48 kHz mic
     // downsampled to 16 kHz). Upsampling keeps linear interpolation.
-    let win = if ratio > 1.0 { ratio.ceil() as usize } else { 1 };
+    let win = if ratio > 1.0 {
+        ratio.ceil() as usize
+    } else {
+        1
+    };
 
     let mut idx = *pos;
     while (idx as usize) < input_len {

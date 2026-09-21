@@ -130,10 +130,7 @@ impl LocalAsrAdapter {
 
         // Fail loudly on empty paths rather than letting sherpa-onnx's model
         // loader surface a cryptic error.
-        if parts[0].trim().is_empty()
-            || parts[1].trim().is_empty()
-            || parts[2].trim().is_empty()
-        {
+        if parts[0].trim().is_empty() || parts[1].trim().is_empty() || parts[2].trim().is_empty() {
             return Err(anyhow::anyhow!(
                 "Local engine endpoint has an empty vad/model/tokens path: {:?}",
                 endpoint
@@ -157,11 +154,16 @@ impl LocalAsrAdapter {
             vad_config.silero_vad.window_size = self.tuning.vad_window_size as i32;
 
             self.vad = Some(
-                sherpa_onnx::VoiceActivityDetector::create(&vad_config, 20.0)
-                    .ok_or_else(|| anyhow::anyhow!("Failed to create Silero VAD from {}", vad_model))?,
+                sherpa_onnx::VoiceActivityDetector::create(&vad_config, 20.0).ok_or_else(|| {
+                    anyhow::anyhow!("Failed to create Silero VAD from {}", vad_model)
+                })?,
             );
             self.last_vad_sensitivity = Some(config.vad_sensitivity);
-            log::info!("Loaded Silero VAD from {} (threshold={:.2})", vad_model, threshold);
+            log::info!(
+                "Loaded Silero VAD from {} (threshold={:.2})",
+                vad_model,
+                threshold
+            );
         }
 
         // Create SenseVoice OfflineRecognizer
@@ -175,8 +177,9 @@ impl LocalAsrAdapter {
 
             print!("Creating recognizer...");
             self.recognizer = Some(
-                sherpa_onnx::OfflineRecognizer::create(&rec_config)
-                    .ok_or_else(|| anyhow::anyhow!("Failed to create SenseVoice from {}", onnx_model))?,
+                sherpa_onnx::OfflineRecognizer::create(&rec_config).ok_or_else(|| {
+                    anyhow::anyhow!("Failed to create SenseVoice from {}", onnx_model)
+                })?,
             );
             println!(" OK");
             log::info!("Loaded SenseVoice from {}", onnx_model);
@@ -224,14 +227,19 @@ impl StreamingAsrEngine for LocalAsrAdapter {
         // Feed VAD in fixed-size windows.
         let _prev_offset = self.vad_offset;
         while self.vad_offset + self.tuning.vad_window_size <= self.buffer.len() {
-            let window = &self.buffer[self.vad_offset..self.vad_offset + self.tuning.vad_window_size];
+            let window =
+                &self.buffer[self.vad_offset..self.vad_offset + self.tuning.vad_window_size];
             vad.accept_waveform(window);
             self.vad_offset += self.tuning.vad_window_size;
 
             if !self.speech_active && vad.detected() {
                 self.speech_active = true;
                 self.last_interim = Instant::now();
-                log::info!("VAD: speech STARTED at buffer={}, offset={}", self.buffer.len(), self.vad_offset);
+                log::info!(
+                    "VAD: speech STARTED at buffer={}, offset={}",
+                    self.buffer.len(),
+                    self.vad_offset
+                );
             }
         }
 

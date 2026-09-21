@@ -402,7 +402,10 @@ mod tests {
         agg.process_event(&partial("over"));
         let result = agg.process_event(&utterance_final("over the lazy dog"));
 
-        assert_eq!(result.display_text, "The quick brown fox jumps over the lazy dog");
+        assert_eq!(
+            result.display_text,
+            "The quick brown fox jumps over the lazy dog"
+        );
         assert!(result.injection_ready);
     }
 }

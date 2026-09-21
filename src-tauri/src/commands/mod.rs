@@ -25,25 +25,27 @@ fn emit_state(app_handle: &AppHandle, state: &crate::session::RecordingSession) 
 
 /// Emit an `asr:result` event from an AsrEvent.
 fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
-    let _ = app_handle.emit("asr:result", serde_json::json!({
-        "text": event.text().unwrap_or(""),
-        "is_final": event.is_final(),
-        "is_utterance_final": event.is_utterance_final(),
-        "language": match event {
-            crate::asr::AsrEvent::Partial { language, .. }
-            | crate::asr::AsrEvent::SegmentFinal { language, .. }
-            | crate::asr::AsrEvent::UtteranceFinal { language, .. } => language.clone(),
-            _ => None,
-        },
-        "confidence": match event {
-            crate::asr::AsrEvent::SegmentFinal { confidence, .. }
-            | crate::asr::AsrEvent::UtteranceFinal { confidence, .. } => *confidence,
-            _ => None,
-        },
-    }));
+    let _ = app_handle.emit(
+        "asr:result",
+        serde_json::json!({
+            "text": event.text().unwrap_or(""),
+            "is_final": event.is_final(),
+            "is_utterance_final": event.is_utterance_final(),
+            "language": match event {
+                crate::asr::AsrEvent::Partial { language, .. }
+                | crate::asr::AsrEvent::SegmentFinal { language, .. }
+                | crate::asr::AsrEvent::UtteranceFinal { language, .. } => language.clone(),
+                _ => None,
+            },
+            "confidence": match event {
+                crate::asr::AsrEvent::SegmentFinal { confidence, .. }
+                | crate::asr::AsrEvent::UtteranceFinal { confidence, .. } => *confidence,
+                _ => None,
+            },
+        }),
+    );
 }
 // Tauri command handlers — bridge between frontend and Rust backend
-
 
 /// P0-2: Parse engine type string to AsrEngineType enum.
 /// Accepts both new ProviderId-aligned IDs and legacy aliases.
@@ -76,7 +78,9 @@ pub async fn start_recording(
     vadSensitivity: Option<u32>,
 ) -> Result<(), String> {
     let session_id = generate_session_id();
-    let engine_name = engine.clone().unwrap_or_else(|| "local_sense_voice".to_string());
+    let engine_name = engine
+        .clone()
+        .unwrap_or_else(|| "local_sense_voice".to_string());
     let language_name = language.clone().unwrap_or_else(|| "auto".to_string());
 
     // ── State transition: Idle/Error → Starting ─────────────────────
@@ -93,7 +97,11 @@ pub async fn start_recording(
         })?;
         emit_state(&app_handle, &session);
     }
-    log::info!("[session={}] recording.start engine={}", session_id, engine_name);
+    log::info!(
+        "[session={}] recording.start engine={}",
+        session_id,
+        engine_name
+    );
 
     // The previous recording's bridge task may still be finishing its final
     // transcription (seconds, for local engines). Wait for it to wind down
@@ -134,7 +142,12 @@ pub async fn start_recording(
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
     let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice);
-    log::info!("[session={}] recording.config engine={} is_local={}", session_id, engine_name, is_local);
+    log::info!(
+        "[session={}] recording.config engine={} is_local={}",
+        session_id,
+        engine_name,
+        is_local
+    );
     if is_local {
         let local_engine = resources::ResourceEngine::SenseVoice;
         let model_check = {
@@ -152,9 +165,15 @@ pub async fn start_recording(
 
             let vad_path = vad_path.ok_or_else(|| "Silero VAD 模型未安装".to_string())?;
             let model_path = model_path.ok_or_else(|| "SenseVoice ONNX 模型未安装".to_string())?;
-            let tokens_path = tokens_path.ok_or_else(|| "SenseVoice tokens 文件未安装".to_string())?;
+            let tokens_path =
+                tokens_path.ok_or_else(|| "SenseVoice tokens 文件未安装".to_string())?;
 
-            log::info!("Models found: vad={:?}, model={:?}, tokens={:?}", vad_path, model_path, tokens_path);
+            log::info!(
+                "Models found: vad={:?}, model={:?}, tokens={:?}",
+                vad_path,
+                model_path,
+                tokens_path
+            );
 
             // Build sherpa-onnx endpoint: vad\x1Emodel\x1Etokens
             Ok::<String, String>(format!(
@@ -205,7 +224,11 @@ pub async fn start_recording(
             vad_sensitivity: vadSensitivity.unwrap_or(50),
             sample_rate: 16000,
         };
-        log::info!("[session={}] asr.initialize engine={}", session_id, engine_name);
+        log::info!(
+            "[session={}] asr.initialize engine={}",
+            session_id,
+            engine_name
+        );
         match asr.initialize(config).await {
             Ok(()) => {
                 log::info!("[session={}] asr.ready", session_id);
@@ -241,7 +264,9 @@ pub async fn start_recording(
     let mut audio_rx = {
         let mut audio_guard = state.audio_capture.lock().map_err(|e| e.to_string())?;
         if let Some(ref mut audio) = *audio_guard {
-            audio.start_recording(device.as_deref()).map_err(|e| e.to_string())?
+            audio
+                .start_recording(device.as_deref())
+                .map_err(|e| e.to_string())?
         } else {
             let mut session = state.session.lock().map_err(|e| e.to_string())?;
             session.fail("Audio capture not initialized");
@@ -270,8 +295,15 @@ pub async fn start_recording(
             use win_text_inject::Target;
             match Target::foreground() {
                 Ok(t) => {
-                    log::info!("[session={}] target captured: pid={} exe={}", session_id, t.pid, t.exe);
-                    session.target = Some(crate::injection::InjectionTarget::new(t.hwnd, t.pid, t.exe, t.class));
+                    log::info!(
+                        "[session={}] target captured: pid={} exe={}",
+                        session_id,
+                        t.pid,
+                        t.exe
+                    );
+                    session.target = Some(crate::injection::InjectionTarget::new(
+                        t.hwnd, t.pid, t.exe, t.class,
+                    ));
                 }
                 Err(e) => {
                     log::warn!("[session={}] failed to capture target: {}", session_id, e);
@@ -282,7 +314,10 @@ pub async fn start_recording(
         {
             // On non-Windows, target capture is not yet implemented.
             // inject_text will fall back to foreground target.
-            log::debug!("[session={}] target capture not implemented on this platform", session_id);
+            log::debug!(
+                "[session={}] target capture not implemented on this platform",
+                session_id
+            );
         }
     }
 
@@ -326,10 +361,13 @@ pub async fn start_recording(
                     // Emit a heartbeat every 500ms so the UI knows audio is flowing.
                     if last_heartbeat.elapsed().as_millis() > 500 {
                         last_heartbeat = std::time::Instant::now();
-                        let _ = app_handle_clone.emit("asr:heartbeat", serde_json::json!({
-                            "frames": frame_count,
-                            "samples": frame.samples.len(),
-                        }));
+                        let _ = app_handle_clone.emit(
+                            "asr:heartbeat",
+                            serde_json::json!({
+                                "frames": frame_count,
+                                "samples": frame.samples.len(),
+                            }),
+                        );
                     }
 
                     // Push audio to ASR and poll for results.
@@ -353,7 +391,12 @@ pub async fn start_recording(
                 }
                 None => {
                     // Channel closed, audio capture stopped — finalize.
-                    log::info!("[session={}] recording.flush frames={} had_partial={}", session_id_clone, frame_count, had_partial);
+                    log::info!(
+                        "[session={}] recording.flush frames={} had_partial={}",
+                        session_id_clone,
+                        frame_count,
+                        had_partial
+                    );
 
                     // ── State transition: Stopping → Finalizing ───────────
                     if let Ok(mut session) = session_for_bridge.lock() {
@@ -365,7 +408,8 @@ pub async fn start_recording(
                     // Phase 9: Event-driven finalize + drain (no sleep).
                     // Signal end of audio, then drain events until utterance-final or timeout.
                     let timeout = std::time::Duration::from_secs(5);
-                    let (events, timed_out) = asr_manager_for_bridge.finalize_and_drain(timeout).await;
+                    let (events, timed_out) =
+                        asr_manager_for_bridge.finalize_and_drain(timeout).await;
 
                     // Emit all drained events.
                     for event in &events {
@@ -375,21 +419,33 @@ pub async fn start_recording(
                     // If timeout, emit finalization_timeout.
                     if timed_out {
                         log::warn!("[session={}] finalization_timeout", session_id_clone);
-                        let _ = app_handle_clone.emit("asr:timeout", serde_json::json!({
-                            "message": "识别收尾超时，已强制结束",
-                        }));
+                        let _ = app_handle_clone.emit(
+                            "asr:timeout",
+                            serde_json::json!({
+                                "message": "识别收尾超时，已强制结束",
+                            }),
+                        );
                     }
 
                     // If no events at all and no partials, emit error.
                     if events.is_empty() && !had_partial {
-                        log::warn!("[session={}] no text recognized ({} frames)", session_id_clone, frame_count);
-                        let _ = app_handle_clone.emit("asr:error", "没有识别到语音内容，请检查麦克风");
+                        log::warn!(
+                            "[session={}] no text recognized ({} frames)",
+                            session_id_clone,
+                            frame_count
+                        );
+                        let _ =
+                            app_handle_clone.emit("asr:error", "没有识别到语音内容，请检查麦克风");
                     }
 
                     // ── State transition: Finalizing → Idle ────────────────
                     if let Ok(mut session) = session_for_bridge.lock() {
                         if let Err(e) = session.complete() {
-                            log::warn!("[session={}] finalizing→idle failed: {}", session.session_id, e);
+                            log::warn!(
+                                "[session={}] finalizing→idle failed: {}",
+                                session.session_id,
+                                e
+                            );
                         }
                         emit_state(&app_handle_clone, &session);
                         log::info!("[session={}] recording.complete", session.session_id);
@@ -401,9 +457,12 @@ pub async fn start_recording(
     });
 
     // Emit event to frontend with session_id for end-to-end tracing.
-    let _ = app_handle.emit("recording:started", serde_json::json!({
-        "session_id": session_id,
-    }));
+    let _ = app_handle.emit(
+        "recording:started",
+        serde_json::json!({
+            "session_id": session_id,
+        }),
+    );
     Ok(())
 }
 
@@ -450,11 +509,7 @@ pub fn get_settings(state: State<'_, AppState>) -> Result<serde_json::Value, Str
 
 /// Save application settings
 #[tauri::command]
-pub fn save_settings(
-    key: String,
-    value: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub fn save_settings(key: String, value: String, state: State<'_, AppState>) -> Result<(), String> {
     if let Some(ref db) = *state.db.lock().map_err(|e| e.to_string())? {
         db.set_setting(&key, &value).map_err(|e| e.to_string())
     } else {
@@ -469,7 +524,8 @@ pub fn get_history(
     state: State<'_, AppState>,
 ) -> Result<Vec<serde_json::Value>, String> {
     if let Some(ref db) = *state.db.lock().map_err(|e| e.to_string())? {
-        db.get_history(limit.unwrap_or(50)).map_err(|e| e.to_string())
+        db.get_history(limit.unwrap_or(50))
+            .map_err(|e| e.to_string())
     } else {
         Ok(Vec::new())
     }
@@ -487,10 +543,7 @@ pub fn clear_history(state: State<'_, AppState>) -> Result<(), String> {
 
 /// Register a global shortcut
 #[tauri::command]
-pub fn register_shortcut(
-    shortcut: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub fn register_shortcut(shortcut: String, state: State<'_, AppState>) -> Result<(), String> {
     if let Some(ref mut manager) = *state.shortcut_manager.lock().map_err(|e| e.to_string())? {
         manager.register(&shortcut).map_err(|e| e.to_string())
     } else {
@@ -663,8 +716,7 @@ pub fn install_model(
             // Copy every model-shaped file in the directory. The previous code
             // resolved a filename here but then called fs::copy on the directory
             // itself, which always failed.
-            let entries = std::fs::read_dir(&source)
-                .map_err(|e| format!("读取目录失败: {}", e))?;
+            let entries = std::fs::read_dir(&source).map_err(|e| format!("读取目录失败: {}", e))?;
             let mut found = false;
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -681,7 +733,8 @@ pub fn install_model(
                 if !is_model {
                     continue;
                 }
-                let name = path.file_name()
+                let name = path
+                    .file_name()
                     .map(|n| n.to_string_lossy().to_string())
                     .ok_or_else(|| "无效的文件名".to_string())?;
                 std::fs::copy(&path, models_dir.join(&name))
@@ -690,10 +743,14 @@ pub fn install_model(
                 found = true;
             }
             if !found {
-                return Err(format!("目录中没有找到 .onnx/.txt/.bin/.gguf 模型文件: {}", input));
+                return Err(format!(
+                    "目录中没有找到 .onnx/.txt/.bin/.gguf 模型文件: {}",
+                    input
+                ));
             }
         } else {
-            let name = source.file_name()
+            let name = source
+                .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .ok_or_else(|| "无效的文件路径".to_string())?;
             std::fs::copy(&source, models_dir.join(&name))
@@ -724,10 +781,7 @@ pub fn install_model(
 
 /// Get the default endpoint for a local engine
 #[tauri::command]
-pub fn get_resource_endpoint(
-    state: State<'_, AppState>,
-    engine: String,
-) -> Result<String, String> {
+pub fn get_resource_endpoint(state: State<'_, AppState>, engine: String) -> Result<String, String> {
     let engine_type = resources::ResourceEngine::from_str(&engine)
         .ok_or_else(|| format!("Unknown engine: {}", engine))?;
 
@@ -735,11 +789,14 @@ pub fn get_resource_endpoint(
     let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
     let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
 
-    let vad_path = manager.vad_model_path(engine_type)
+    let vad_path = manager
+        .vad_model_path(engine_type)
         .ok_or_else(|| "VAD model not found".to_string())?;
-    let model_path = manager.model_path(engine_type)
+    let model_path = manager
+        .model_path(engine_type)
         .ok_or_else(|| "Model file not found".to_string())?;
-    let tokens_path = manager.tokens_path(engine_type)
+    let tokens_path = manager
+        .tokens_path(engine_type)
         .ok_or_else(|| "Tokens file not found".to_string())?;
 
     Ok(format!(
@@ -770,8 +827,12 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
     // window back behind the floating bubble (appearing as a no-op). It stays
     // topmost until closed (close-to-hide in lib.rs hides but keeps it alive).
     let _ = window.set_always_on_top(true);
-    window.show().map_err(|e| format!("Failed to show settings: {}", e))?;
-    window.set_focus().map_err(|e| format!("Failed to focus settings: {}", e))?;
+    window
+        .show()
+        .map_err(|e| format!("Failed to show settings: {}", e))?;
+    window
+        .set_focus()
+        .map_err(|e| format!("Failed to focus settings: {}", e))?;
     Ok(())
 }
 
@@ -788,15 +849,19 @@ pub async fn inject_text(
     mode: Option<String>,
 ) -> Result<serde_json::Value, String> {
     if text.is_empty() {
-        return Ok(serde_json::to_value(&crate::injection::InjectionResult::Injected {
-            method: crate::injection::InjectionMethod::ClipboardPaste,
-            verified: false,
-        })
-        .map_err(|e| format!("{e}"))?);
+        return Ok(
+            serde_json::to_value(&crate::injection::InjectionResult::Injected {
+                method: crate::injection::InjectionMethod::ClipboardPaste,
+                verified: false,
+            })
+            .map_err(|e| format!("{e}"))?,
+        );
     }
 
     let mode = mode
-        .and_then(|m| serde_json::from_str::<crate::inject::InjectionMode>(&format!("\"{m}\"")).ok())
+        .and_then(|m| {
+            serde_json::from_str::<crate::inject::InjectionMode>(&format!("\"{m}\"")).ok()
+        })
         .unwrap_or_default();
 
     // Phase 4: Look up the session to get the captured target.
@@ -835,7 +900,10 @@ pub async fn inject_text(
     };
 
     // Phase 3: Use InjectionController for dedupe and validation.
-    let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+    let controller = state
+        .injection_controller
+        .lock()
+        .map_err(|e| e.to_string())?;
 
     let request = controller.create_request(
         &session_id,
@@ -860,12 +928,18 @@ pub async fn inject_text(
     }
 
     // Mark in-flight.
-    controller.mark_in_flight(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+    controller.mark_in_flight(&crate::injection::InjectionKey::new(
+        &session_id,
+        &utterance_id,
+    ));
     drop(controller); // Release lock before async injection.
 
     // Phase 5: Validate target.
     let validation = {
-        let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+        let controller = state
+            .injection_controller
+            .lock()
+            .map_err(|e| e.to_string())?;
         controller.validate_target(&target)
     };
 
@@ -901,27 +975,44 @@ pub async fn inject_text(
             method: crate::injection::InjectionMethod::ClipboardPaste,
             verified: true,
         },
-        crate::inject::InjectionResult::ClipboardFallback => crate::injection::InjectionResult::ClipboardFallback {
-            reason: "UIPI 阻止确认".into(),
-        },
-        crate::inject::InjectionResult::PermissionDenied => crate::injection::InjectionResult::PermissionDenied {
-            reason: "权限不足".into(),
-        },
-        crate::inject::InjectionResult::TargetUnavailable => crate::injection::InjectionResult::Failed {
-            reason: "目标不可用".into(),
-        },
-        crate::inject::InjectionResult::Failed { reason } => crate::injection::InjectionResult::Failed { reason },
+        crate::inject::InjectionResult::ClipboardFallback => {
+            crate::injection::InjectionResult::ClipboardFallback {
+                reason: "UIPI 阻止确认".into(),
+            }
+        }
+        crate::inject::InjectionResult::PermissionDenied => {
+            crate::injection::InjectionResult::PermissionDenied {
+                reason: "权限不足".into(),
+            }
+        }
+        crate::inject::InjectionResult::TargetUnavailable => {
+            crate::injection::InjectionResult::Failed {
+                reason: "目标不可用".into(),
+            }
+        }
+        crate::inject::InjectionResult::Failed { reason } => {
+            crate::injection::InjectionResult::Failed { reason }
+        }
     };
 
     // Mark completed.
     {
-        let controller = state.injection_controller.lock().map_err(|e| e.to_string())?;
+        let controller = state
+            .injection_controller
+            .lock()
+            .map_err(|e| e.to_string())?;
         match &injection_result {
             r if r.is_success() => {
-                controller.mark_completed(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+                controller.mark_completed(&crate::injection::InjectionKey::new(
+                    &session_id,
+                    &utterance_id,
+                ));
             }
             _ => {
-                controller.mark_failed(&crate::injection::InjectionKey::new(&session_id, &utterance_id));
+                controller.mark_failed(&crate::injection::InjectionKey::new(
+                    &session_id,
+                    &utterance_id,
+                ));
             }
         }
     }
@@ -935,17 +1026,18 @@ pub async fn inject_text(
 /// Uses the `tauri-plugin-autostart` crate, which handles the platform-specific
 /// mechanisms (Windows registry Run key, macOS LaunchAgent, Linux .desktop file).
 #[tauri::command]
-pub async fn set_auto_start(
-    app_handle: AppHandle,
-    enabled: bool,
-) -> Result<(), String> {
+pub async fn set_auto_start(app_handle: AppHandle, enabled: bool) -> Result<(), String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app_handle.autolaunch();
     if enabled {
-        manager.enable().map_err(|e| format!("Failed to enable autostart: {e}"))?;
+        manager
+            .enable()
+            .map_err(|e| format!("Failed to enable autostart: {e}"))?;
         log::info!("Auto-start enabled");
     } else {
-        manager.disable().map_err(|e| format!("Failed to disable autostart: {e}"))?;
+        manager
+            .disable()
+            .map_err(|e| format!("Failed to disable autostart: {e}"))?;
         log::info!("Auto-start disabled");
     }
     Ok(())
@@ -956,7 +1048,9 @@ pub async fn set_auto_start(
 pub async fn get_auto_start(app_handle: AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
     let manager = app_handle.autolaunch();
-    manager.is_enabled().map_err(|e| format!("Failed to query autostart: {e}"))
+    manager
+        .is_enabled()
+        .map_err(|e| format!("Failed to query autostart: {e}"))
 }
 
 /// Persist the cloud API key into OS secure storage.
@@ -971,7 +1065,9 @@ pub fn save_api_key(
     if apiKey.is_empty() {
         // Delete the key if empty.
         let store = crate::secure_keystore::platform_key_store();
-        store.delete("voiceboom-api-key").map_err(|e| e.to_string())?;
+        store
+            .delete("voiceboom-api-key")
+            .map_err(|e| e.to_string())?;
         // Also clean up legacy SQLite entry.
         if let Ok(db) = state.db.lock() {
             if let Some(ref db) = *db {
@@ -981,8 +1077,13 @@ pub fn save_api_key(
         return Ok(());
     }
     let store = crate::secure_keystore::platform_key_store();
-    store.store("voiceboom-api-key", &apiKey).map_err(|e| e.to_string())?;
-    log::info!("save_api_key: stored {} chars in OS secure storage", apiKey.len());
+    store
+        .store("voiceboom-api-key", &apiKey)
+        .map_err(|e| e.to_string())?;
+    log::info!(
+        "save_api_key: stored {} chars in OS secure storage",
+        apiKey.len()
+    );
     Ok(())
 }
 
@@ -991,7 +1092,9 @@ pub fn save_api_key(
 #[tauri::command]
 pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String> {
     let store = crate::secure_keystore::platform_key_store();
-    let result = store.retrieve("voiceboom-api-key").map_err(|e| e.to_string())?;
+    let result = store
+        .retrieve("voiceboom-api-key")
+        .map_err(|e| e.to_string())?;
     if result.is_some() {
         return Ok(result);
     }
@@ -1015,9 +1118,7 @@ pub fn get_api_key(state: State<'_, AppState>) -> Result<Option<String>, String>
 /// Get performance metrics for the audio pipeline.
 /// Phase 15: Latency instrumentation.
 #[tauri::command]
-pub fn get_performance_metrics(
-    _state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
+pub fn get_performance_metrics(_state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     // Return latency metrics from the tracker.
     // For now, return a placeholder — full integration requires
     // shared LatencyTracker state.
@@ -1044,7 +1145,8 @@ pub fn get_performance_metrics(
 use crate::models::{
     downloader::{download, DownloadHandle, ProgressFn},
     installer::{install_from_archive, ExpectedFile},
-    verifier::verify_archive, ModelManager,
+    verifier::verify_archive,
+    ModelManager,
 };
 use tokio::sync::RwLock;
 
@@ -1068,9 +1170,7 @@ pub fn list_models(
     _app_handle: AppHandle,
     manager: State<'_, ModelManagerHandle>,
 ) -> Result<Vec<serde_json::Value>, String> {
-    let mgr = manager
-        .blocking_read()
-        .clone();
+    let mgr = manager.blocking_read().clone();
     let statuses = mgr.list_models();
     let result = statuses
         .into_iter()
@@ -1156,7 +1256,14 @@ pub async fn download_model(
         );
     });
 
-    let result = download(mgr.http_client(), &info.archive.url, &archive_path, &handle, Some(progress_cb)).await;
+    let result = download(
+        mgr.http_client(),
+        &info.archive.url,
+        &archive_path,
+        &handle,
+        Some(progress_cb),
+    )
+    .await;
 
     {
         let mut downloads = downloads_arc.write().await;
@@ -1198,7 +1305,13 @@ pub async fn download_model(
         })
         .collect();
 
-    match install_from_archive(&archive_path, &models_dir, &info.engine, &info.version, &expected) {
+    match install_from_archive(
+        &archive_path,
+        &models_dir,
+        &info.engine,
+        &info.version,
+        &expected,
+    ) {
         Ok(res) => {
             // Do NOT auto-activate: the frontend decides whether to switch the
             // active model (the user may be mid-recording with another version).
@@ -1262,7 +1375,12 @@ pub fn delete_model_version(
 
     // If the deleted version was active, clear it.
     let mut active = mgr.load_active();
-    if active.engines.get(&engine).map(|v| v == &version).unwrap_or(false) {
+    if active
+        .engines
+        .get(&engine)
+        .map(|v| v == &version)
+        .unwrap_or(false)
+    {
         active.engines.remove(&engine);
         mgr.save_active(&active)
             .map_err(|e| format!("保存 active.json 失败: {e}"))?;
@@ -1307,9 +1425,7 @@ use crate::provider::registry::ProviderRegistry;
 
 /// List all providers with their runtime status (configured, enabled, local).
 #[tauri::command]
-pub fn list_providers(
-    state: State<'_, AppState>,
-) -> Result<Vec<serde_json::Value>, String> {
+pub fn list_providers(state: State<'_, AppState>) -> Result<Vec<serde_json::Value>, String> {
     let configs = load_provider_configs(&state)?;
     let statuses = ProviderRegistry::list_status(&configs);
     let result: Vec<serde_json::Value> = statuses
@@ -1335,7 +1451,8 @@ pub fn get_provider_config(
 ) -> Result<serde_json::Value, String> {
     let id: ProviderId = provider.parse().map_err(|e: String| e)?;
     let configs = load_provider_configs(&state)?;
-    let cfg = ProviderRegistry::find_config(&configs, id).unwrap_or_else(|| ProviderConfig::new(id));
+    let cfg =
+        ProviderRegistry::find_config(&configs, id).unwrap_or_else(|| ProviderConfig::new(id));
     Ok(serde_json::json!({
         "provider": cfg.provider,
         "endpoint": cfg.endpoint,
@@ -1396,9 +1513,7 @@ pub fn save_provider_credential(
 
 /// Remove a provider's credential from secure storage.
 #[tauri::command]
-pub fn delete_provider_credential(
-    provider: String,
-) -> Result<(), String> {
+pub fn delete_provider_credential(provider: String) -> Result<(), String> {
     let id: ProviderId = provider.parse().map_err(|e: String| e)?;
     let cfg = ProviderConfig::new(id);
     ProviderCredentialStore::delete(&cfg.credential_ref)?;
@@ -1407,9 +1522,7 @@ pub fn delete_provider_credential(
 
 /// Test whether a provider's credential is valid (resolves from secure storage).
 #[tauri::command]
-pub fn test_provider_connection(
-    provider: String,
-) -> Result<serde_json::Value, String> {
+pub fn test_provider_connection(provider: String) -> Result<serde_json::Value, String> {
     let id: ProviderId = provider.parse().map_err(|e: String| e)?;
     let cfg = ProviderConfig::new(id);
     let status = ProviderCredentialStore::status(id, &cfg.credential_ref);
@@ -1434,8 +1547,7 @@ pub fn resolve_provider(
         "cloud" => ProviderMode::Cloud,
         _ => ProviderMode::Automatic,
     };
-    let preferred = preferred_cloud
-        .and_then(|p| p.parse::<ProviderId>().ok());
+    let preferred = preferred_cloud.and_then(|p| p.parse::<ProviderId>().ok());
     let configs = load_provider_configs(&state)?;
 
     match ProviderRegistry::resolve(mode, local_available, &configs, preferred) {
@@ -1476,10 +1588,22 @@ fn load_provider_configs(state: &AppState) -> Result<Vec<(ProviderId, ProviderCo
 /// Load a single provider config from SQLite.
 fn load_single_config(db: &crate::db::Database, id: ProviderId) -> Option<ProviderConfig> {
     let base = config_key(id, "");
-    let endpoint = db.get_setting(&format!("{base}endpoint")).ok().unwrap_or_default();
-    let model = db.get_setting(&format!("{base}model")).ok().unwrap_or_default();
-    let enabled = db.get_setting(&format!("{base}enabled")).ok().unwrap_or_default();
-    let credential_ref = db.get_setting(&format!("{base}credential_ref")).ok().unwrap_or_default();
+    let endpoint = db
+        .get_setting(&format!("{base}endpoint"))
+        .ok()
+        .unwrap_or_default();
+    let model = db
+        .get_setting(&format!("{base}model"))
+        .ok()
+        .unwrap_or_default();
+    let enabled = db
+        .get_setting(&format!("{base}enabled"))
+        .ok()
+        .unwrap_or_default();
+    let credential_ref = db
+        .get_setting(&format!("{base}credential_ref"))
+        .ok()
+        .unwrap_or_default();
 
     let mut cfg = ProviderConfig::new(id);
     if let Some(ep) = endpoint {
@@ -1506,9 +1630,16 @@ fn load_single_config(db: &crate::db::Database, id: ProviderId) -> Option<Provid
 /// Save a single provider config to SQLite.
 fn save_single_config(db: &crate::db::Database, cfg: &ProviderConfig) -> Result<(), String> {
     let base = config_key(cfg.provider, "");
-    db.set_setting(&format!("{base}endpoint"), &cfg.endpoint).map_err(|e| e.to_string())?;
-    db.set_setting(&format!("{base}model"), &cfg.model).map_err(|e| e.to_string())?;
-    db.set_setting(&format!("{base}enabled"), if cfg.enabled { "true" } else { "false" }).map_err(|e| e.to_string())?;
-    db.set_setting(&format!("{base}credential_ref"), &cfg.credential_ref).map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}endpoint"), &cfg.endpoint)
+        .map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}model"), &cfg.model)
+        .map_err(|e| e.to_string())?;
+    db.set_setting(
+        &format!("{base}enabled"),
+        if cfg.enabled { "true" } else { "false" },
+    )
+    .map_err(|e| e.to_string())?;
+    db.set_setting(&format!("{base}credential_ref"), &cfg.credential_ref)
+        .map_err(|e| e.to_string())?;
     Ok(())
 }

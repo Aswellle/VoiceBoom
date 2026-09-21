@@ -123,10 +123,7 @@ impl RecordingSession {
     /// Idle/Error → Starting.
     pub fn begin_start(&mut self) -> Result<(), String> {
         if !self.can_start() {
-            return Err(format!(
-                "无法开始录音：当前状态为 '{}'",
-                self.state
-            ));
+            return Err(format!("无法开始录音：当前状态为 '{}'", self.state));
         }
         self.state = RecordingState::Starting;
         self.error = None;
@@ -136,10 +133,7 @@ impl RecordingSession {
     /// Starting → Recording. Records the start timestamp.
     pub fn mark_recording(&mut self) -> Result<(), String> {
         if self.state != RecordingState::Starting {
-            return Err(format!(
-                "无法进入录音状态：当前为 '{}'",
-                self.state
-            ));
+            return Err(format!("无法进入录音状态：当前为 '{}'", self.state));
         }
         self.state = RecordingState::Recording;
         self.started_at = Some(now_ms());
@@ -149,10 +143,7 @@ impl RecordingSession {
     /// Recording → Stopping.
     pub fn begin_stop(&mut self) -> Result<(), String> {
         if !self.can_stop() {
-            return Err(format!(
-                "无法停止录音：当前状态为 '{}'",
-                self.state
-            ));
+            return Err(format!("无法停止录音：当前状态为 '{}'", self.state));
         }
         self.state = RecordingState::Stopping;
         Ok(())
@@ -161,10 +152,7 @@ impl RecordingSession {
     /// Stopping → Finalizing.
     pub fn mark_finalizing(&mut self) -> Result<(), String> {
         if self.state != RecordingState::Stopping {
-            return Err(format!(
-                "无法进入收尾状态：当前为 '{}'",
-                self.state
-            ));
+            return Err(format!("无法进入收尾状态：当前为 '{}'", self.state));
         }
         self.state = RecordingState::Finalizing;
         Ok(())
@@ -173,10 +161,7 @@ impl RecordingSession {
     /// Finalizing → Idle. Records the stop timestamp.
     pub fn complete(&mut self) -> Result<(), String> {
         if self.state != RecordingState::Finalizing {
-            return Err(format!(
-                "无法完成收尾：当前状态为 '{}'",
-                self.state
-            ));
+            return Err(format!("无法完成收尾：当前状态为 '{}'", self.state));
         }
         self.state = RecordingState::Idle;
         self.stopped_at = Some(now_ms());
@@ -202,7 +187,9 @@ pub type SessionHandle = Arc<Mutex<RecordingSession>>;
 
 /// Create a new session handle in Idle state.
 pub fn new_session_handle(session_id: String, engine: String, language: String) -> SessionHandle {
-    Arc::new(Mutex::new(RecordingSession::new(session_id, engine, language)))
+    Arc::new(Mutex::new(RecordingSession::new(
+        session_id, engine, language,
+    )))
 }
 
 /// Current unix timestamp in milliseconds.

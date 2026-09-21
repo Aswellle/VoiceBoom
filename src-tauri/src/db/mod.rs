@@ -196,22 +196,39 @@ impl Database {
         let conn = lock_conn(&self.conn);
         let mut stmt = conn.prepare(
             "SELECT id, text, language, engine, confidence, created_at
-             FROM history ORDER BY created_at DESC LIMIT ?1"
+             FROM history ORDER BY created_at DESC LIMIT ?1",
         )?;
         // m12 fix: Use Value::Null for NaN confidence instead of 0
         let rows = stmt.query_map([limit], |row| {
             let mut obj = serde_json::Map::new();
-            obj.insert("id".to_string(), serde_json::Value::Number(row.get::<_, i64>(0)?.into()));
+            obj.insert(
+                "id".to_string(),
+                serde_json::Value::Number(row.get::<_, i64>(0)?.into()),
+            );
             obj.insert("text".to_string(), serde_json::Value::String(row.get(1)?));
-            obj.insert("language".to_string(), row.get::<_, Option<String>>(2)?
-                .map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
-            obj.insert("engine".to_string(), row.get::<_, Option<String>>(3)?
-                .map(serde_json::Value::String).unwrap_or(serde_json::Value::Null));
-            obj.insert("confidence".to_string(), row.get::<_, Option<f64>>(4)?
-                .and_then(|v| serde_json::Number::from_f64(v))
-                .map(serde_json::Value::Number)
-                .unwrap_or(serde_json::Value::Null));
-            obj.insert("created_at".to_string(), serde_json::Value::Number(row.get::<_, i64>(5)?.into()));
+            obj.insert(
+                "language".to_string(),
+                row.get::<_, Option<String>>(2)?
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            );
+            obj.insert(
+                "engine".to_string(),
+                row.get::<_, Option<String>>(3)?
+                    .map(serde_json::Value::String)
+                    .unwrap_or(serde_json::Value::Null),
+            );
+            obj.insert(
+                "confidence".to_string(),
+                row.get::<_, Option<f64>>(4)?
+                    .and_then(|v| serde_json::Number::from_f64(v))
+                    .map(serde_json::Value::Number)
+                    .unwrap_or(serde_json::Value::Null),
+            );
+            obj.insert(
+                "created_at".to_string(),
+                serde_json::Value::Number(row.get::<_, i64>(5)?.into()),
+            );
             Ok(serde_json::Value::Object(obj))
         })?;
 
