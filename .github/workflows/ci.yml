@@ -65,9 +65,63 @@ jobs:
         run: |
           mkdir -p /tmp/sherpa-onnx
           curl -L -o /tmp/sherpa-onnx/lib.tar.bz2 \
-            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-linux-x64-shared-lib.tar.bz2
+            https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.8/sherpa-onnx-v1.13.8-linux-x64-shared-lib.tar.bz2
           tar -xjf /tmp/sherpa-onnx/lib.tar.bz2 -C /tmp/sherpa-onnx
           echo "SHERPA_ONNX_LIB_DIR=/tmp/sherpa-onnx" >> $GITHUB_ENV
+
+      - name: Cache sherpa-onnx archive
+        uses: actions/cache@v4
+        with:
+          path: /tmp/sherpa-onnx
+          key: sherpa-onnx-1.13.8-linux-x64
+
+      - name: Cache Cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+      - name: Format check
+        run: cargo fmt --check --locked
+        working-directory: src-tauri
+
+      - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: src-tauri
+
+      - name: Test
+        run: cargo test --locked
+        working-directory: src-tauri
+
+  # ------------------------------------------------------------
+  # Windows: build + test with sherpa bootstrap
+  # ------------------------------------------------------------
+  windows:
+    name: Windows (build + test)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: ${{ env.BUN_VERSION }}
+
+      - name: Cache sherpa-onnx
+        uses: actions/cache@v4
+        with:
+          path: .cache/sherpa-onnx
+          key: windows-sherpa-onnx-1.13.8-x64
+
+      - name: Prepare sherpa-onnx
+        shell: pwsh
+        run: |
+          .\scripts\prepare-sherpa-onnx.ps1 -CacheDir ".cache/sherpa-onnx"
 
       - name: Cache Cargo
         uses: actions/cache@v4
@@ -76,15 +130,17 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             src-tauri/target
-          key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
-
-      - name: Format check
-        run: cargo fmt --check
-        working-directory: src-tauri
+          key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+        restore-keys: |
+          windows-cargo-
 
       - name: Clippy
+        run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: src-tauri
+
+      - name: Test
+        run: cargo test --locked
+        working-directory: src-tauri
         run: cargo clippy -- -D warnings
         working-directory: src-tauri
 

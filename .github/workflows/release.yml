@@ -105,12 +105,19 @@ jobs:
         with:
           targets: x86_64-pc-windows-msvc
 
+      - name: Cache sherpa-onnx
+        uses: actions/cache@v4
+        with:
+          path: .cache/sherpa-onnx
+          key: windows-sherpa-onnx-1.13.8-x64
+
+      - name: Prepare sherpa-onnx
+        shell: pwsh
+        run: |
+          .\scripts\prepare-sherpa-onnx.ps1 -CacheDir ".cache/sherpa-onnx"
+
       - name: Rust cache
         uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
-      - name: Install frontend dependencies
         run: bun install --frozen-lockfile
 
       - name: Build Tauri installers (MSI + NSIS)

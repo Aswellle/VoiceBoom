@@ -13,6 +13,8 @@
     "tauri:dev": "tauri dev",
     "tauri:build": "tauri build",
     "tauri:build:test": "tauri build --config src-tauri/tauri.test.conf.json",
+    "tauri:dev:windows": "powershell -ExecutionPolicy Bypass -File scripts/prepare-sherpa-onnx.ps1 && tauri dev",
+    "tauri:build:windows": "powershell -ExecutionPolicy Bypass -File scripts/prepare-sherpa-onnx.ps1 && tauri build",
     "test:e2e": "node scripts/e2e_smoke.mjs"
   },
   "dependencies": {
