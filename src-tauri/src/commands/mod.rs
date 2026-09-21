@@ -284,37 +284,32 @@ pub async fn start_recording(
     // This ensures text is injected into the same window that was focused
     // when the user pressed the hotkey, even if they switch windows during
     // recording.
+    #[cfg(windows)]
     {
         let mut session = state.session.lock().map_err(|e| e.to_string())?;
-        #[cfg(windows)]
-        {
-            use win_text_inject::Target;
-            match Target::foreground() {
-                Ok(t) => {
-                    log::info!(
-                        "[session={}] target captured: pid={} exe={}",
-                        session_id,
-                        t.pid,
-                        t.exe
-                    );
-                    session.target = Some(crate::injection::InjectionTarget::new(
-                        t.hwnd, t.pid, t.exe, t.class,
-                    ));
-                }
-                Err(e) => {
-                    log::warn!("[session={session_id}] failed to capture target: {e}");
-                }
+        use win_text_inject::Target;
+        match Target::foreground() {
+            Ok(t) => {
+                log::info!(
+                    "[session={}] target captured: pid={} exe={}",
+                    session_id,
+                    t.pid,
+                    t.exe
+                );
+                session.target = Some(crate::injection::InjectionTarget::new(
+                    t.hwnd, t.pid, t.exe, t.class,
+                ));
+            }
+            Err(e) => {
+                log::warn!("[session={session_id}] failed to capture target: {e}");
             }
         }
-        #[cfg(not(windows))]
-        {
-            // On non-Windows, target capture is not yet implemented.
-            // inject_text will fall back to foreground target.
-            log::debug!(
-                "[session={}] target capture not implemented on this platform",
-                session_id
-            );
-        }
+    }
+    #[cfg(not(windows))]
+    {
+        // On non-Windows, target capture is not yet implemented.
+        // inject_text will fall back to foreground target.
+        log::debug!("[session={session_id}] target capture not implemented on this platform");
     }
 
     // Spawn bridge task that forwards audio -> ASR -> frontend events.

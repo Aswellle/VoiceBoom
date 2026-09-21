@@ -16,7 +16,8 @@ pub mod fake_target;
 pub mod model;
 
 pub use controller::InjectionController;
-pub use model::{
-    InjectionKey, InjectionMethod, InjectionMode, InjectionResult, InjectionTarget,
-    TargetValidation,
-};
+pub use model::{InjectionKey, InjectionMethod, InjectionMode, InjectionResult, TargetValidation};
+// Referenced only by the Windows foreground-target capture path; other
+// platforms reach InjectionTarget through `injection::model` directly.
+#[cfg(windows)]
+pub use model::InjectionTarget;

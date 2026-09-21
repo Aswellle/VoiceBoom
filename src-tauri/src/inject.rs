@@ -173,9 +173,6 @@ pub fn inject(text: &str, mode: &InjectionMode) -> InjectionResult {
 
 #[cfg(not(windows))]
 fn fallback_inject_via_clipboard(text: &str) -> InjectionResult {
-    use std::io::Write;
-    use std::process::Command;
-
     // Save prior clipboard content for restoration.
     let prior = read_clipboard();
 
