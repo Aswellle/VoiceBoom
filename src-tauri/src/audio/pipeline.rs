@@ -118,7 +118,7 @@ mod tests {
         }
 
         // Queue must not exceed capacity
-        assert!(sent <= capacity, "sent {} > capacity {}", sent, capacity);
+        assert!(sent <= capacity, "sent {sent} > capacity {capacity}");
         // Some frames must have been dropped (slow consumer scenario)
         assert!(dropped > 0, "expected some drops, got none");
         assert_eq!(sent + dropped, 20);
@@ -253,6 +253,6 @@ mod tests {
             remaining += 1;
         }
         // Remaining must be <= capacity (not growing unboundedly)
-        assert!(remaining <= 5, "queue depth {} exceeds capacity", remaining);
+        assert!(remaining <= 5, "queue depth {remaining} exceeds capacity");
     }
 }

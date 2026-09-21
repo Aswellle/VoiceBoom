@@ -260,7 +260,7 @@ impl AsrSession for FakeAsrSession {
 #[cfg(test)]
 mod tests {
     use super::*;
-
+    use crate::asr::engine_trait::{AsrEngineType, AsrResult};
     fn test_config() -> AsrConfig {
         AsrConfig {
             engine_type: AsrEngineType::DeepgramStreaming,
