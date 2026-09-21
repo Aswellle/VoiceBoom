@@ -28,6 +28,7 @@ fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
     let _ = app_handle.emit("asr:result", serde_json::json!({
         "text": event.text().unwrap_or(""),
         "is_final": event.is_final(),
+        "is_utterance_final": event.is_utterance_final(),
         "language": match event {
             crate::asr::AsrEvent::Partial { language, .. }
             | crate::asr::AsrEvent::SegmentFinal { language, .. }
@@ -44,16 +45,19 @@ fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
 // Tauri command handlers — bridge between frontend and Rust backend
 
 
+/// P0-2: Parse engine type string to AsrEngineType enum.
+/// Accepts both new ProviderId-aligned IDs and legacy aliases.
 fn parse_engine_type(engine: &str) -> AsrEngineType {
     match engine {
+        // New ProviderId-aligned IDs (P0-2)
+        "local_sense_voice" => AsrEngineType::LocalSenseVoice,
         "openai_realtime" => AsrEngineType::OpenAIRealtimeTranscription,
         "deepgram_streaming" => AsrEngineType::DeepgramStreaming,
-        "local_sense_voice" => AsrEngineType::LocalSenseVoice,
         // Legacy aliases for backward compatibility
         "openai_whisper" => AsrEngineType::OpenAIRealtimeTranscription,
         "deepgram" => AsrEngineType::DeepgramStreaming,
         "whisper_cpp" | "funasr" => AsrEngineType::LocalSenseVoice,
-        _ => AsrEngineType::OpenAIRealtimeTranscription,
+        _ => AsrEngineType::LocalSenseVoice,
     }
 }
 
@@ -72,7 +76,7 @@ pub async fn start_recording(
     vadSensitivity: Option<u32>,
 ) -> Result<(), String> {
     let session_id = generate_session_id();
-    let engine_name = engine.clone().unwrap_or_else(|| "openai_whisper".to_string());
+    let engine_name = engine.clone().unwrap_or_else(|| "local_sense_voice".to_string());
     let language_name = language.clone().unwrap_or_else(|| "auto".to_string());
 
     // ── State transition: Idle/Error → Starting ─────────────────────
@@ -254,6 +258,32 @@ pub async fn start_recording(
             e
         })?;
         emit_state(&app_handle, &session);
+    }
+    // P1: Capture injection target at Press time (Architecture Lock A).
+    // This ensures text is injected into the same window that was focused
+    // when the user pressed the hotkey, even if they switch windows during
+    // recording.
+    {
+        let mut session = state.session.lock().map_err(|e| e.to_string())?;
+        #[cfg(windows)]
+        {
+            use win_text_inject::Target;
+            match Target::foreground() {
+                Ok(t) => {
+                    log::info!("[session={}] target captured: pid={} exe={}", session_id, t.pid, t.exe);
+                    session.target = Some(crate::injection::InjectionTarget::new(t.hwnd, t.pid, t.exe, t.class));
+                }
+                Err(e) => {
+                    log::warn!("[session={}] failed to capture target: {}", session_id, e);
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            // On non-Windows, target capture is not yet implemented.
+            // inject_text will fall back to foreground target.
+            log::debug!("[session={}] target capture not implemented on this platform", session_id);
+        }
     }
 
     // Spawn bridge task that forwards audio -> ASR -> frontend events.

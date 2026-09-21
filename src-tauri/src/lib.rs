@@ -194,6 +194,10 @@ pub fn run() {
             std::fs::create_dir_all(&app_dir).ok();
             let db_path = app_dir.join("voiceboom.db");
             let db = Database::new(&db_path).expect("failed to initialize database");
+            // Run database migrations (P1: schema version tracking).
+            if let Err(e) = db.run_migrations() {
+                log::warn!("Database migration failed (non-fatal): {}", e);
+            }
             *app.state::<AppState>().db.lock().unwrap() = Some(db);
 
             // Initialize ASR manager

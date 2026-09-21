@@ -64,6 +64,76 @@ impl Database {
             )",
             [],
         )?;
+        // P1: Schema version tracking for migrations.
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS schema_version (
+                version INTEGER NOT NULL,
+                applied_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            )",
+            [],
+        )?;
+        Ok(())
+    }
+
+    /// Get the current schema version (0 if not yet initialized).
+    fn get_schema_version(&self) -> anyhow::Result<i64> {
+        let conn = lock_conn(&self.conn);
+        let version: Option<i64> = conn
+            .query_row(
+                "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(version.unwrap_or(0))
+    }
+
+    /// Apply a migration if not already applied.
+    fn apply_migration(&self, version: i64, sql: &str) -> anyhow::Result<()> {
+        let conn = lock_conn(&self.conn);
+        let current: i64 = conn
+            .query_row(
+                "SELECT version FROM schema_version ORDER BY version DESC LIMIT 1",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(0);
+        if current >= version {
+            return Ok(());
+        }
+        conn.execute(sql, [])?;
+        conn.execute(
+            "INSERT INTO schema_version (version) VALUES (?1)",
+            [version],
+        )?;
+        Ok(())
+    }
+
+    /// Run all pending migrations.
+    pub fn run_migrations(&self) -> anyhow::Result<()> {
+        let current = self.get_schema_version()?;
+        log::info!("Database schema version: {}", current);
+        // Migration 1: Add provider_config table (Phase 3).
+        self.apply_migration(
+            1,
+            "CREATE TABLE IF NOT EXISTS provider_config (
+                provider_id TEXT PRIMARY KEY,
+                endpoint TEXT,
+                model TEXT,
+                credential_ref TEXT,
+                enabled INTEGER NOT NULL DEFAULT 1,
+                updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            )",
+        )?;
+        // Migration 2: Add engine_mode to settings (Phase 3).
+        self.apply_migration(
+            2,
+            "CREATE TABLE IF NOT EXISTS engine_mode (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER NOT NULL DEFAULT (strftime('%s','now'))
+            )",
+        )?;
         Ok(())
     }
 

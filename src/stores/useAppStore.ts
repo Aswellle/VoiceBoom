@@ -24,7 +24,14 @@ export type AppStatus = 'idle' | 'listening' | 'result';
 export type RecordingSessionState = 'idle' | 'starting' | 'recording' | 'stopping' | 'finalizing' | 'error';
 
 /// ASR engine type
-export type AsrEngineType = 'openai_whisper' | 'deepgram' | 'whisper_cpp' | 'funasr';
+/// ASR engine type — aligned with backend ProviderId serde values.
+/// These are stable string IDs that map directly to the Rust backend.
+export type AsrEngineType =
+  | 'local_sense_voice'
+  | 'openai_realtime'
+  | 'deepgram_streaming'
+  | 'openai_whisper'
+  | 'custom_openai_compatible';
 
 /// Application settings
 export interface AppSettings {
@@ -55,15 +62,14 @@ export interface AppSettings {
   /// - 'expanded': scrollable full record
   hudDensity: 'compact' | 'standard' | 'expanded';
 }
-
 const DEFAULT_SETTINGS: AppSettings = {
   language: 'auto',
   maxChars: 80,
+  engine: 'local_sense_voice',
+  apiKey: '',
   // Default to the bundled local engine, not a cloud API that needs a key —
   // the product promise is "works out of the box", so a first launch that
   // silently defaults to an unconfigured cloud engine breaks that promise.
-  engine: 'funasr',
-  apiKey: '',
   endpoint: '',
   shortcut: 'Ctrl+Space',
   fontSize: 22,
@@ -229,6 +235,30 @@ export interface ResolvedProviderInfo {
 }
 
 // m5 fix: Monotonic counter for unique IDs (avoids millisecond collision)
+
+/// P0-2: Migrate legacy engine IDs to stable ProviderId values.
+/// Called once during loadSettings to converge old stored IDs.
+function migrateEngineId(oldId: string): AsrEngineType {
+  switch (oldId) {
+    case 'funasr':
+    case 'whisper_cpp':
+      return 'local_sense_voice';
+    case 'openai_whisper':
+      return 'openai_realtime';
+    case 'deepgram':
+      return 'deepgram_streaming';
+    // New IDs pass through unchanged
+    case 'local_sense_voice':
+    case 'openai_realtime':
+    case 'deepgram_streaming':
+    case 'openai_whisper':
+    case 'custom_openai_compatible':
+      return oldId;
+    default:
+      // Unknown engine — fall back to local (the product default)
+      return 'local_sense_voice';
+  }
+}
 let idCounter = 0;
 function generateId(): string {
   idCounter += 1;
@@ -363,7 +393,17 @@ export const useAppStore = create<AppState>((set, get) => ({
         switch (key) {
           case 'language': partial.language = value; break;
           case 'maxChars': partial.maxChars = parseInt(value, 10) || 80; break;
-          case 'engine': partial.engine = value as AsrEngineType; break;
+          case 'engine': {
+            // P0-2: Migrate legacy engine IDs to stable ProviderId values.
+            const migrated = migrateEngineId(value);
+            partial.engine = migrated;
+            // If the stored value was a legacy ID, persist the migrated value
+            // so the database converges to the new IDs.
+            if (migrated !== value) {
+              invoke('save_settings', { key: 'engine', value: migrated }).catch(() => {});
+            }
+            break;
+          }
           // apiKey is intentionally NOT loaded from the generic settings
           // table — it lives in model_config (loaded below).
           case 'endpoint': partial.endpoint = value; break;

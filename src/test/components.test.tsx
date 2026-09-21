@@ -72,7 +72,7 @@ beforeEach(() => {
       theme: "light",
       fontSize: 22,
       opacity: 1,
-      engine: "funasr",
+      engine: "local_sense_voice",
       apiKey: "",
     },
     settingsLoaded: true,

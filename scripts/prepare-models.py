@@ -70,7 +70,36 @@ def main():
     cache_dir.mkdir(parents=True, exist_ok=True)
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    registry = json.loads(registry_path.read_text(encoding="utf-8"))
+    # P0: Validate registry contract before processing.
+    # Every file must have url, size, and sha256 — otherwise we produce
+    # empty/broken archives that look valid.
+    errors = []
+    for model in registry["models"]:
+        model_id = model.get("id", "<unknown>")
+        for i, file_info in enumerate(model.get("files", [])):
+            prefix = f"model '{model_id}' file[{i}]"
+            if not file_info.get("url"):
+                errors.append(f"{prefix}: missing 'url'")
+            if not file_info.get("size"):
+                errors.append(f"{prefix}: missing 'size'")
+            if not file_info.get("sha256"):
+                errors.append(f"{prefix}: missing 'sha256'")
+            elif file_info["sha256"] == "REPLACE":
+                errors.append(f"{prefix}: sha256 is placeholder 'REPLACE'")
+    if errors:
+        print("ERROR: registry contract validation failed:")
+        for e in errors:
+            print(f"  - {e}")
+        raise SystemExit(1)
+
+    # P0: Validate archive-level sha256 if present.
+    for model in registry["models"]:
+        model_id = model.get("id", "<unknown>")
+        archive = model.get("archive", {})
+        if archive.get("sha256") and archive["sha256"] == "REPLACE":
+            print(f"WARNING: model '{model_id}' archive sha256 is placeholder 'REPLACE'")
+
+    print("Registry contract validation passed.")
 
     for model in registry["models"]:
         model_id = model["id"]

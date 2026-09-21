@@ -10,6 +10,9 @@ import { useAppStore, RecordingSessionState } from '../stores/useAppStore';
 interface AsrEvent {
   text: string;
   is_final: boolean;
+  /// P0-4: true only for UtteranceFinal events (injection trigger).
+  /// SegmentFinal also sets is_final=true but is_utterance_final=false.
+  is_utterance_final: boolean;
   language?: string;
   confidence?: number;
 }
@@ -48,11 +51,10 @@ export function useAsr(): UseAsrReturn {
       unlistenStarted.then((f) => f());
     };
   }, [setCurrentSessionId]);
-
   // Listen for ASR results from Rust backend
   useEffect(() => {
     const unlistenResult = listen<AsrEvent>('asr:result', (event) => {
-      const { text, is_final, language, confidence } = event.payload;
+      const { text, is_final, is_utterance_final, language, confidence } = event.payload;
       if (is_final) {
         addSegment({
           id: Date.now().toString(36) + Math.random().toString(36).slice(2, 8),
@@ -62,6 +64,11 @@ export function useAsr(): UseAsrReturn {
           confidence,
           timestamp: Date.now(),
         });
+      }
+
+      // P0-4: Only UtteranceFinal triggers injection.
+      // SegmentFinal adds a segment but does NOT inject.
+      if (is_utterance_final) {
         // Phase 9: Pass session_id + utterance_id for dedupe.
         const sessionId = currentSessionIdRef.current || 'unknown';
         const utteranceId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -70,7 +77,9 @@ export function useAsr(): UseAsrReturn {
           utteranceId,
           text,
         });
-      } else {
+      }
+
+      if (!is_final) {
         updatePartial(text);
       }
     });

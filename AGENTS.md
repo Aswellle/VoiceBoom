@@ -127,10 +127,10 @@ The frontend exposes 3 modes to users: **Automatic** / **Local** / **Cloud** (Ad
 
 Cross-platform text injection in `src-tauri/src/inject.rs` + `src-tauri/src/injection/` (`InjectionController` with 6 Architecture Locks). **Vendored crates** in `src-tauri/vendor/` (no external crate references — path dependencies only):
 
-| Platform | Default (Clipboard mode) | Fallback (Typing mode) |
+|Platform|Default (Clipboard mode)|Fallback (Typing mode)|
 |---|---|---|
-| **Windows** | `win-text-inject` — delayed-render clipboard injection (fixes: clipboard-history privacy, held-modifier corruption, UIPI silent failure, clipboard-restore race) | `enigo` keystroke simulation |
-| **macOS/Linux** | `enigo` clipboard+paste (best-effort) | `enigo` keystroke simulation |
+|**Windows**|`win-text-inject` — delayed-render clipboard injection (fixes: clipboard-history privacy, held-modifier corruption, UIPI silent failure, clipboard-restore race)|`enigo` keystroke simulation|
+|**macOS/Linux**|`enigo` clipboard+paste (best-effort)|`enigo` keystroke simulation|
 
 The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` default / `"typing"`).
 
@@ -138,34 +138,34 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 
 ## Key Directories
 
-| Path | Purpose |
+|Path|Purpose|
 |---|---|
-| `src/` | React frontend (components, hooks, stores, styles) |
-| `src/components/FloatingWindow/` | Main transcription surface (owns shared `useAsr` instance) |
-| `src/components/Settings/` | 5-tab settings panel (基本/AI/外观/个性化/高级) |
-| `src/components/Waveform/` | Canvas-based audio level equalizer (12 bars, ~30fps) |
-| `src/components/HistoryPanel/` | History overlay (search, copy, select-all, clear with confirm) |
-| `src/components/Animation/`, `src/components/Shared/` | Shared UI primitives |
-| `src/hooks/useAsr.ts` | ASR lifecycle: start/stop + event subscriptions |
-| `src/hooks/useGlobalShortcut.ts` | Push-to-talk via `shortcut:pressed/released` |
-| `src/stores/useAppStore.ts` | Single Zustand store — all client state |
-| `src/constants/engines.ts` | `ENGINES` array — single source of truth for engine list |
-| `src/utils/` | `clipboard.ts` (copy with textarea fallback), `debounce`, `isTauri()` |
-| `src/styles/index.css` | Tailwind directives + glassmorphism design tokens |
-| `src/test/` | Vitest tests + setup (Tauri API mocks) |
-| `src-tauri/src/` | Rust backend |
-| `src-tauri/src/commands/mod.rs` | All 26 `#[tauri::command]` handlers + session state machine |
-| `src-tauri/src/asr/` | `StreamingAsrEngine` + `AsrSession` traits, `AsrManager`, adapters, aggregator, latency |
-| `src-tauri/src/provider/` | `ProviderRegistry`, `ProviderConfig`, `ProviderCredentialStore` (Phase 3) |
-| `src-tauri/src/audio/capture.rs` + `pipeline.rs` | CPAL capture + bounded real-time pipeline |
-| `src-tauri/src/shortcut/` | Global hotkey manager + platform defaults |
-| `src-tauri/src/tray/` | System tray icon + menu |
-| `src-tauri/src/resources/` | ONNX model path resolution |
-| `src-tauri/src/db/` | SQLite (settings/history/shortcuts/model_config) |
-| `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
-| `src-tauri/src/models/` | `ModelManager`, `ModelDownloader`, `ModelVerifier`, `ModelInstaller` (Phase 2) |
-| `src-tauri/vendor/` | Vendored `win-text-inject` + `enigo` crates (path deps) |
-| `docs/` | Architecture, ASR, testing, security, performance docs |
+|`src/`|React frontend (components, hooks, stores, styles)|
+|`src/components/FloatingWindow/`|Main transcription surface (owns shared `useAsr` instance)|
+|`src/components/Settings/`|5-tab settings panel (基本/AI/外观/个性化/高级)|
+|`src/components/Waveform/`|Canvas-based audio level equalizer (12 bars, ~30fps)|
+|`src/components/HistoryPanel/`|History overlay (search, copy, select-all, clear with confirm)|
+|`src/components/Animation/`, `src/components/Shared/`|Shared UI primitives|
+|`src/hooks/useAsr.ts`|ASR lifecycle: start/stop + event subscriptions|
+|`src/hooks/useGlobalShortcut.ts`|Push-to-talk via `shortcut:pressed/released`|
+|`src/stores/useAppStore.ts`|Single Zustand store — all client state|
+|`src/constants/engines.ts`|`ENGINES` array — single source of truth for engine list|
+|`src/utils/`|`clipboard.ts` (copy with textarea fallback), `debounce`, `isTauri()`|
+|`src/styles/index.css`|Tailwind directives + glassmorphism design tokens|
+|`src/test/`|Vitest tests + setup (Tauri API mocks)|
+|`src-tauri/src/`|Rust backend|
+|`src-tauri/src/commands/mod.rs`|All 26 `#[tauri::command]` handlers + session state machine|
+|`src-tauri/src/asr/`|`StreamingAsrEngine` + `AsrSession` traits, `AsrManager`, adapters, aggregator, latency|
+|`src-tauri/src/provider/`|`ProviderRegistry`, `ProviderConfig`, `ProviderCredentialStore` (Phase 3)|
+|`src-tauri/src/audio/capture.rs` + `pipeline.rs`|CPAL capture + bounded real-time pipeline|
+|`src-tauri/src/shortcut/`|Global hotkey manager + platform defaults|
+|`src-tauri/src/tray/`|System tray icon + menu|
+|`src-tauri/src/resources/`|ONNX model path resolution|
+|`src-tauri/src/db/`|SQLite (settings/history/shortcuts/model_config)|
+|`src-tauri/src/secure_keystore.rs`|API key storage (DPAPI / Keychain / File 0600)|
+|`src-tauri/src/models/`|`ModelManager`, `ModelDownloader`, `ModelVerifier`, `ModelInstaller` (Phase 2)|
+|`src-tauri/vendor/`|Vendored `win-text-inject` + `enigo` crates (path deps)|
+|`docs/`|Architecture, ASR, testing, security, performance docs|
 
 ---
 
@@ -175,47 +175,48 @@ The frontend picks the strategy from `settings.injectionMode` (`"clipboard"` def
 
 26 commands registered in `lib.rs`, defined in `src-tauri/src/commands/mod.rs`:
 
-| Command | Purpose |
+|Command|Purpose|
 |---|---|
-| `start_recording` | Start capture + ASR pipeline, spawn bridge task |
-| `stop_recording` | Stop audio; bridge flushes for final result |
-| `get_settings` / `save_settings` | Read/write settings (persisted to SQLite) |
-| `get_history` / `clear_history` | Recognition history |
-| `register_shortcut` / `unregister_shortcut` | Global push-to-talk hotkey |
-| `get_audio_devices` | List input devices |
-| `open_settings` | Show/focus the pre-declared settings window |
-| `get_resource_status` | Model package readiness (for UI) |
-| `get_resource_endpoint` | Build sherpa-onnx endpoint string |
-| `install_model` | Copy ONNX/txt/bin/gguf into models dir |
-| `switch_engine` | Check model availability, emit `engine:switched` |
-| `inject_text` | Inject transcribed text into focused field |
-| `set_auto_start` / `get_auto_start` | Windows startup registration |
-| `save_api_key` / `get_api_key` | Secure API key storage |
-| `get_performance_metrics` | Latency tracker readout |
-| `list_models` / `get_model_status` | List models / get model runtime status |
-| `download_model` / `cancel_model_download` | Download model / cancel in-flight download |
-| `delete_model_version` / `set_active_model` | Delete version / set active version |
-| `get_model_registry` | Get raw registry.json content |
-| `list_providers` | List cloud providers with status |
-| `get_provider_config` / `save_provider_config` | Read/write provider config |
-| `save_provider_credential` / `delete_provider_credential` | Store/delete provider API key |
-| `test_provider_connection` | Test provider credential |
-| `resolve_provider` | Resolve provider via auto-fallback |
+|`start_recording`|Start capture + ASR pipeline, spawn bridge task|
+|`stop_recording`|Stop audio; bridge flushes for final result|
+|`get_settings` / `save_settings`|Read/write settings (persisted to SQLite)|
+|`get_history` / `clear_history`|Recognition history|
+|`register_shortcut` / `unregister_shortcut`|Global push-to-talk hotkey|
+|`get_audio_devices`|List input devices|
+|`open_settings`|Show/focus the pre-declared settings window|
+|`get_resource_status`|Model package readiness (for UI)|
+|`get_resource_endpoint`|Build sherpa-onnx endpoint string|
+|`install_model`|Copy ONNX/txt/bin/gguf into models dir|
+|`switch_engine`|Check model availability, emit `engine:switched`|
+|`inject_text`|Inject transcribed text into focused field|
+|`set_auto_start` / `get_auto_start`|Windows startup registration|
+|`save_api_key` / `get_api_key`|Secure API key storage|
+|`get_performance_metrics`|Latency tracker readout|
+|`list_models` / `get_model_status`|List models / get model runtime status|
+|`download_model` / `cancel_model_download`|Download model / cancel in-flight download|
+|`delete_model_version` / `set_active_model`|Delete version / set active version|
+|`get_model_registry`|Get raw registry.json content|
+|`list_providers`|List cloud providers with status|
+|`get_provider_config` / `save_provider_config`|Read/write provider config|
+|`save_provider_credential` / `delete_provider_credential`|Store/delete provider API key|
+|`test_provider_connection`|Test provider credential|
+|`resolve_provider`|Resolve provider via auto-fallback|
+
 ### Events (`listen` / `emit`) — backend pushes to frontend
 
-| Event | Payload | When |
+|Event|Payload|When|
 |---|---|---|
-| `asr:result` | `{text, is_final, language, confidence}` | Partial or final recognition |
-| `tray:set-engine` / `tray:set-language` | string | Tray menu selection |
-| `show-about` | — | Tray about clicked |
-| `model:download_progress` | `{model_id, downloaded, total}` | Model download progress |
-| `model:download_complete` | `{model_id, success, error?}` | Model download finished |
-| `audio:level` | number | Mic level for waveform |
-| `shortcut:pressed` / `shortcut:released` | shortcut string | Hotkey state |
-| `recording:started` / `recording:stopped` | — | Lifecycle |
-| `engine:switched` | JSON result | After `switch_engine` |
-| `tray:set-engine` / `tray:set-language` | string | Tray menu selection |
-| `show-about` | — | Tray about clicked |
+|`asr:result`|`{text, is_final, language, confidence}`|Partial or final recognition|
+|`tray:set-engine` / `tray:set-language`|string|Tray menu selection|
+|`show-about`|—|Tray about clicked|
+|`model:download_progress`|`{model_id, downloaded, total}`|Model download progress|
+|`model:download_complete`|`{model_id, success, error?}`|Model download finished|
+|`audio:level`|number|Mic level for waveform|
+|`shortcut:pressed` / `shortcut:released`|shortcut string|Hotkey state|
+|`recording:started` / `recording:stopped`|—|Lifecycle|
+|`engine:switched`|JSON result|After `switch_engine`|
+|`tray:set-engine` / `tray:set-language`|string|Tray menu selection|
+|`show-about`|—|Tray about clicked|
 
 ---
 
@@ -237,43 +238,6 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 ```
 
 > **Critical build rule:** Always produce release artifacts with `bun run tauri:build`. `cargo build --release` alone bypasses the Tauri CLI — it skips the frontend bundle and bakes in `devUrl`, producing an EXE that shows a white screen (`ERR_CONNECTION_REFUSED`). Use `cargo check` only to verify Rust compiles. Release output: `src-tauri/target/release/bundle/{msi,nsis}/`.
-
----
-
-## Testing & QA
-
-### Two-Layer + E2E Strategy
-
-| Layer | Tool | Runs in | Scope |
-|---|---|---|---|
-| **Unit/Component** | Vitest 4.11 + jsdom 30 | Node (mocked Tauri) | Store logic, component render/interaction, a11y |
-| **Rust integration** | `#[cfg(test)]` + `cargo test` | Native | ASR pipeline, aggregator, session state-machine, failure injection |
-| **Desktop E2E** | `scripts/e2e_smoke.mjs` (tauri-driver + msedgedriver) | Real built app | App launch, controls, text injection into focused field |
-
-### Vitest
-
-- **Setup** (`src/test/setup.ts`): mocks `@tauri-apps/api/core` (`invoke` → in-memory `fakeStore`), `webviewWindow` (`fakeWebviewWindow` singleton), `event` (no-op). Stubs `matchMedia`, `scrollHeight`/`clientHeight`/`scrollTo`, `execCommand`. Exposes `globalThis.__setEngineResult` to flip engine readiness per test.
-- **store.test.ts**: M8 re-entrant guard, settings persistence + `maxChars` side-effect, segment budgeting, toast auto-dismiss.
-- **components.test.tsx**: `SegmentItem` (render, a11y role/aria-label, clipboard copy + textarea fallback), `FloatingWindow` (controls render, engine hint, listening toggle, resize-on-content, scroll-to-bottom FAB).
-- Run: `bun run test` / `bun run test:watch`.
-
-### Rust Tests
-
-- **`asr/integration_tests.rs`**: `FakeAsrSession`-driven lifecycle, Deepgram/OpenAI event parser contracts, flush/finalization, `TranscriptAggregator` (empty/partial/multi-utterance/out-of-order/duplicate-prevention), `AsrManager` send/receive/close.
-- **`asr/failure_tests.rs`**: state-machine recovery (error releases resources, duplicate-start prevented, rapid 10× start-stop), audio device failure, network disconnect / API 401 / 429, model missing, shortcut conflict, permission denied, malformed response, multiple-failure recovery.
-- **`models/verifier.rs`**: SHA256 computation + file verification roundtrip.
-- **`models/installer.rs`**: atomic extract→validate→rename roundtrip.
-- **`provider/registry.rs`**: provider resolution + auto-fallback (offline forces local, automatic prefers local then falls back to cloud, cloud uses preferred).
-- **`resources/mod.rs`**: `DistributionFlavor` detection + display.
-- Run: `cargo test`.
-
-### E2E
-
-- **Prerequisites**: build single-window test variant (`bun run tauri:build:test`), `msedgedriver` on PATH.
-- **Driver chain**: selenium → tauri-driver (port 4444) → msedgedriver (port 4445, WebView2) → `voiceboom.exe`.
-- **Single-window config** (`src-tauri/tauri.test.conf.json`): only the floating window (avoids WebDriver attaching to settings window).
-- **Covers**: app launch, engine label, start/stop button, settings button.
-- **Does NOT cover** (needs real mic/OS loop): global hotkey, live audio capture, ASR transcription, desktop drag.
 
 ---
 
@@ -309,44 +273,44 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 
 ## Important Files
 
-| File | Role |
+|File|Role|
 |---|---|
-| `src/main.tsx` | React 19 bootstrap; wraps `App` in `ErrorBoundary` (M11 fix) |
-| `src/App.tsx` | Root routing by window label; registers shortcut + tray listeners |
-| `src/stores/useAppStore.ts` | Single source of truth for all client state |
-| `src/hooks/useAsr.ts` | ASR lifecycle + event subscriptions |
-| `src/hooks/useGlobalShortcut.ts` | Push-to-talk (callback-ref pattern, M9) |
-| `src/components/FloatingWindow/index.tsx` | Main transcription surface |
-| `src/components/Settings/index.tsx` | 5-tab settings; runs `switch_engine`, polls `get_resource_status` |
-| `src/test/setup.ts` | Vitest global setup (Tauri mocks + jsdom stubs) |
-| `src-tauri/src/main.rs` | Windows GUI entry; `windows_subsystem=windows` |
-| `src-tauri/src/lib.rs` | `AppState`, 26-command registration, setup, system tray, file logger |
-| `src-tauri/src/commands/mod.rs` | All command handlers + session state machine (replaces RecordingClaim) |
-| `src-tauri/src/inject.rs` | Cross-platform text injection dispatch |
-| `src-tauri/src/injection/` | `InjectionController` with Architecture Locks |
-| `src-tauri/src/asr/engine_trait.rs` | `StreamingAsrEngine` trait, `AsrConfig`, `AsrResult`, `AsrEngineType` |
-| `src-tauri/src/asr/session.rs` | `AsrSession` trait, `AsrEvent` enum, `LegacySessionAdapter` |
-| `src-tauri/src/asr/streaming.rs` | `AsrManager` (engine lifecycle + reuse) |
-| `src-tauri/src/asr/adapters/local.rs` | sherpa-onnx SenseVoice + Silero VAD (active local engine) |
-| `src-tauri/src/asr/adapters/openai_realtime.rs` | OpenAI Realtime WebSocket adapter |
-| `src-tauri/src/asr/adapters/deepgram.rs` | Deepgram Streaming WebSocket adapter |
-| `src-tauri/src/asr/aggregator.rs` | `TranscriptAggregator` (Architecture Lock F) |
-| `src-tauri/src/asr/latency.rs` | `LatencyTracker` (t0–t7, P50/P90/P95/P99) |
-| `src-tauri/src/audio/capture.rs` | CPAL mic capture + resample → 16kHz mono f32 |
-| `src-tauri/src/audio/pipeline.rs` | Bounded real-time audio pipeline (Architecture Lock C) |
-| `src-tauri/src/secure_keystore.rs` | API key storage (DPAPI / Keychain / File 0600) |
-| `src-tauri/src/models/mod.rs` | `ModelManager`, `ModelState`, `ModelRegistry`, embedded registry |
-| `src-tauri/src/models/downloader.rs` | `ModelDownloader` (retry, progress, resumable, cancellation) |
-| `src-tauri/src/models/verifier.rs` | `ModelVerifier` (SHA256 + size validation) |
-| `src-tauri/src/models/installer.rs` | `ModelInstaller` (atomic install via .staging + active.json) |
-| `src-tauri/src/provider/config.rs` | `ProviderId`, `ProviderMode`, `ProviderConfig` |
-| `src-tauri/src/provider/credential.rs` | `ProviderCredentialStore` (OS secure storage) |
-| `src-tauri/src/provider/registry.rs` | `ProviderRegistry` (auto-fallback resolve) |
-| `src-tauri/src/resources/mod.rs` | `DistributionFlavor`, ONNX model path resolution |
-| `src-tauri/tauri.offline.conf.json` | Offline build config (bundles asr-bundle resources) |
-| `scripts/prepare-models.py` | CI: prepare model release archives |
-| `scripts/install-model-pack.py` | CI: install model pack for offline build |
-| `scripts/verify-models.py` | CI: verify model archive integrity |
+|`src/main.tsx`|React 19 bootstrap; wraps `App` in `ErrorBoundary` (M11 fix)|
+|`src/App.tsx`|Root routing by window label; registers shortcut + tray listeners|
+|`src/stores/useAppStore.ts`|Single source of truth for all client state|
+|`src/hooks/useAsr.ts`|ASR lifecycle + event subscriptions|
+|`src/hooks/useGlobalShortcut.ts`|Push-to-talk (callback-ref pattern, M9)|
+|`src/components/FloatingWindow/index.tsx`|Main transcription surface|
+|`src/components/Settings/index.tsx`|5-tab settings; runs `switch_engine`, polls `get_resource_status`|
+|`src/test/setup.ts`|Vitest global setup (Tauri mocks + jsdom stubs)|
+|`src-tauri/src/main.rs`|Windows GUI entry; `windows_subsystem=windows`|
+|`src-tauri/src/lib.rs`|`AppState`, 26-command registration, setup, system tray, file logger|
+|`src-tauri/src/commands/mod.rs`|All command handlers + session state machine (replaces RecordingClaim)|
+|`src-tauri/src/inject.rs`|Cross-platform text injection dispatch|
+|`src-tauri/src/injection/`|`InjectionController` with Architecture Locks|
+|`src-tauri/src/asr/engine_trait.rs`|`StreamingAsrEngine` trait, `AsrConfig`, `AsrResult`, `AsrEngineType`|
+|`src-tauri/src/asr/session.rs`|`AsrSession` trait, `AsrEvent` enum, `LegacySessionAdapter`|
+|`src-tauri/src/asr/streaming.rs`|`AsrManager` (engine lifecycle + reuse)|
+|`src-tauri/src/asr/adapters/local.rs`|sherpa-onnx SenseVoice + Silero VAD (active local engine)|
+|`src-tauri/src/asr/adapters/openai_realtime.rs`|OpenAI Realtime WebSocket adapter|
+|`src-tauri/src/asr/adapters/deepgram.rs`|Deepgram Streaming WebSocket adapter|
+|`src-tauri/src/asr/aggregator.rs`|`TranscriptAggregator` (Architecture Lock F)|
+|`src-tauri/src/asr/latency.rs`|`LatencyTracker` (t0–t7, P50/P90/P95/P99)|
+|`src-tauri/src/audio/capture.rs`|CPAL mic capture + resample → 16kHz mono f32|
+|`src-tauri/src/audio/pipeline.rs`|Bounded real-time audio pipeline (Architecture Lock C)|
+|`src-tauri/src/secure_keystore.rs`|API key storage (DPAPI / Keychain / File 0600)|
+|`src-tauri/src/models/mod.rs`|`ModelManager`, `ModelState`, `ModelRegistry`, embedded registry|
+|`src-tauri/src/models/downloader.rs`|`ModelDownloader` (retry, progress, resumable, cancellation)|
+|`src-tauri/src/models/verifier.rs`|`ModelVerifier` (SHA256 + size validation)|
+|`src-tauri/src/models/installer.rs`|`ModelInstaller` (atomic install via .staging + active.json)|
+|`src-tauri/src/provider/config.rs`|`ProviderId`, `ProviderMode`, `ProviderConfig`|
+|`src-tauri/src/provider/credential.rs`|`ProviderCredentialStore` (OS secure storage)|
+|`src-tauri/src/provider/registry.rs`|`ProviderRegistry` (auto-fallback resolve)|
+|`src-tauri/src/resources/mod.rs`|`DistributionFlavor`, ONNX model path resolution|
+|`src-tauri/tauri.offline.conf.json`|Offline build config (bundles asr-bundle resources)|
+|`scripts/prepare-models.py`|CI: prepare model release archives|
+|`scripts/install-model-pack.py`|CI: install model pack for offline build|
+|`scripts/verify-models.py`|CI: verify model archive integrity|
 
 ---
 
@@ -363,17 +327,43 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 - **E2E drivers installed outside repo (not committed):** tauri-driver at `D:\cargo\bin\tauri-driver.exe`, msedgedriver at `D:\msedgedriver\`.
 - **CI:** `.github/workflows/release.yml` — validate → build matrix (win-x64 + macos-universal) → optional offline build → publish. SHA256 checksums, draft release, immutable release guard. Model releases via `model-release.yml` on `models-*` tags.
 - **Offline build:** triggered on-demand via `workflow_dispatch` (build_offline: true), NOT every release.
-### Version Inconsistencies (known)
 
-| File | version | Note |
-|---|---|---|
-| `package.json` | `0.3.0` | ✅ All version files now aligned |
-| `src-tauri/Cargo.toml` | `0.3.0` | Authoritative app version |
-| `src-tauri/tauri.conf.json` | `0.3.0` | ✅ Matches Cargo |
-| `src-tauri/tauri.test.conf.json` | `0.3.0` | ✅ Matches Cargo |
-### Plugin Version Notes
+---
 
-Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-dialog` is `2.7` and `tauri-plugin-autostart` is `2.5.1` (independent release cycles, still Tauri 2.x ABI-compatible). When adding a plugin, pair the npm + Rust crate on major.minor.
+## Testing & QA
+
+### Two-Layer + E2E Strategy
+
+|Layer|Tool|Runs in|Scope|
+|---|---|---|---|
+|**Unit/Component**|Vitest 4.11 + jsdom 30|Node (mocked Tauri)|Store logic, component render/interaction, a11y|
+|**Rust integration**|`#[cfg(test)]` + `cargo test`|Native|ASR pipeline, aggregator, session state-machine, failure injection|
+|**Desktop E2E**|`scripts/e2e_smoke.mjs` (tauri-driver + msedgedriver)|Real built app|App launch, controls, text injection into focused field|
+
+### Vitest
+
+- **Setup** (`src/test/setup.ts`): mocks `@tauri-apps/api/core` (`invoke` → in-memory `fakeStore`), `webviewWindow` (`fakeWebviewWindow` singleton), `event` (no-op). Stubs `matchMedia`, `scrollHeight`/`clientHeight`/`scrollTo`, `execCommand`. Exposes `globalThis.__setEngineResult` to flip engine readiness per test.
+- **store.test.ts**: M8 re-entrant guard, settings persistence + `maxChars` side-effect, segment budgeting, toast auto-dismiss.
+- **components.test.tsx**: `SegmentItem` (render, a11y role/aria-label, clipboard copy + textarea fallback), `FloatingWindow` (controls render, engine hint, listening toggle, resize-on-content, scroll-to-bottom FAB).
+- Run: `bun run test` / `bun run test:watch`.
+
+### Rust Tests
+
+- **`asr/integration_tests.rs`**: `FakeAsrSession`-driven lifecycle, Deepgram/OpenAI event parser contracts, flush/finalization, `TranscriptAggregator` (empty/partial/multi-utterance/out-of-order/duplicate-prevention), `AsrManager` send/receive/close.
+- **`asr/failure_tests.rs`**: state-machine recovery (error releases resources, duplicate-start prevented, rapid 10× start-stop), audio device failure, network disconnect / API 401 / 429, model missing, shortcut conflict, permission denied, malformed response, multiple-failure recovery.
+- **`models/verifier.rs`**: SHA256 computation + file verification roundtrip.
+- **`models/installer.rs`**: atomic extract→validate→rename roundtrip.
+- **`provider/registry.rs`**: provider resolution + auto-fallback (offline forces local, automatic prefers local then falls back to cloud, cloud uses preferred).
+- **`resources/mod.rs`**: `DistributionFlavor` detection + display.
+- Run: `cargo test`.
+
+### E2E
+
+- **Prerequisites**: build single-window test variant (`bun run tauri:build:test`), `msedgedriver` on PATH.
+- **Driver chain**: selenium → tauri-driver (port 4444) → msedgedriver (port 4445, WebView2) → `voiceboom.exe`.
+- **Single-window config** (`src-tauri/tauri.test.conf.json`): only the floating window (avoids WebDriver attaching to settings window).
+- **Covers**: app launch, engine label, start/stop button, settings button.
+- **Does NOT cover** (needs real mic/OS loop): global hotkey, live audio capture, ASR transcription, desktop drag.
 
 ---
 
@@ -386,9 +376,13 @@ Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-di
 - **Local adapter reuse:** Changing engine/endpoint/language triggers a rebuild; identical config reuses the resident model.
 
 - **Model path resolution:** ResourceManager searches app-data dir → `asr-bundle/` → portable `models/` next to EXE. All 3 files (model, tokens, VAD) are required for readiness.
+
 - **Model downloads are atomic:** `ModelInstaller` extracts to `.staging/` first, validates every file's SHA256, then renames into place. If a download crashes mid-way, the `.staging/` dir can be safely cleaned — the previous version remains intact. Never write directly into the version directory.
+
 - **Model registry is embedded at compile time:** `ModelManager::new_embedded()` uses `include_str!("../../../models/registry.json")`. Changing the registry requires a recompile. SHA256 values in the registry MUST be generated by the CI pipeline (`prepare-models.py`), never hand-written.
+
 - **Provider credentials never touch plaintext storage:** API keys are stored ONLY in OS secure storage (DPAPI/Keychain/0600 file) via `secure_keystore`. SQLite stores only the `credential_ref` string. Never log, serialize, or persist the actual API key.
+
 - **Cloud provider config is resolved at session start:** The `resolve_provider` command implements auto-fallback (Local → Cloud). The resolved provider + credential are bound to the recording session — changing provider config mid-recording does not affect the active session.
 
 - **Text injection on Windows** uses `win-text-inject`'s delayed rendering — do NOT replace it with a naive clipboard+paste loop (that's the anti-pattern it exists to fix). All synthesized events carry `INJECT_TAG` in `dwExtraInfo`; the hotkey hook should skip events with this tag to avoid re-triggering.
@@ -417,3 +411,19 @@ Most `@tauri-apps/plugin-*` packages are pinned to `2.2.0`, but `tauri-plugin-di
   7. release starts as draft
 
   Never publish a release until all platform builds pass.
+
+### Git 提交规则
+
+  - commit message 中禁止包含任何 `Co-Authored-By` 署名（包括但不限于 Claude、Anthropic、noreply@anthropic.com 等任何 AI 相关署名）
+
+  - 所有提交仅保留用户本人的 git 作者信息（`用户名 <邮箱>`）
+
+  - 创建 PR 时同样不添加任何 AI 合作者信息
+
+### 仓库管理硬性规则（永远不可违反）
+
+  - **禁止修改公共仓库的可见性**：不得将任何公开（public）仓库切换为私有（private）或内部（internal），即使是为了清除 contributor 缓存、刷新索引或其他任何原因。此操作会导致 star 和 fork 数据永久丢失。
+
+  - **禁止通过 `gh repo edit --visibility` 切换任何仓库的可见性**：除非用户明确要求且已书面确认接受丢失 star/fork 的后果。
+
+  - **禁止通过其他任何手段（API、浏览器设置等）修改仓库可见性**：本规则覆盖所有可能的可见性修改方式。

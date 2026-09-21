@@ -7,7 +7,7 @@ import { useAppStore, type AsrEngineType } from '../../stores/useAppStore';
 import { invoke } from '@tauri-apps/api/core';
 import { open } from '@tauri-apps/plugin-dialog';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
-import { ENGINES, type EngineInfo } from '../../constants/engines';
+import { ENGINES, AVAILABLE_ENGINES, EXPERIMENTAL_ENGINES, type EngineInfo } from '../../constants/engines';
 
 type TabId = 'basic' | 'ai' | 'model' | 'appearance' | 'personalization' | 'advanced';
 
@@ -339,7 +339,7 @@ function AITab() {
       <div className="flex flex-col gap-2">
         <label className="text-sm text-gray-600 font-medium">语音识别服务</label>
         <div className="grid grid-cols-1 gap-2">
-          {ENGINES.map((engine) => (
+          {AVAILABLE_ENGINES.map((engine) => (
             <button
               key={engine.id}
               onClick={() => handleEngineChange(engine.id)}
@@ -367,6 +367,33 @@ function AITab() {
               <p className="text-xs text-gray-500 mt-1 leading-relaxed">{engine.description}</p>
             </button>
           ))}
+        </div>
+
+        {/* Experimental / upcoming engines — not yet implemented */}
+        <div className="flex flex-col gap-2">
+          <label className="text-sm text-gray-600 font-medium">实验性（即将推出）</label>
+          <div className="grid grid-cols-1 gap-2">
+            {EXPERIMENTAL_ENGINES.map((engine) => (
+              <button
+                key={engine.id}
+                disabled
+                className="text-left p-3 rounded-lg border-2 transition-all opacity-60 cursor-not-allowed border-dashed border-gray-300 bg-gray-50"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-gray-500 min-w-0 truncate">{engine.name}</span>
+                  <span className="shrink-0 text-xs px-2 py-0.5 bg-amber-100 text-amber-700 rounded-full whitespace-nowrap">
+                    实验性
+                  </span>
+                  {engine.isLocal && (
+                    <span className="shrink-0 text-xs px-2 py-0.5 bg-green-100 text-green-700 rounded-full whitespace-nowrap">
+                      本地离线
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-400 mt-1 leading-relaxed">{engine.description}</p>
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 

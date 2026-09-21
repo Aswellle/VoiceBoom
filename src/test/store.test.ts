@@ -42,14 +42,14 @@ describe("loadSettings (M8 re-entrant guard)", () => {
   it("loads persisted settings once and exposes them on the store", async () => {
     // Pre-seed the fake SQLite via a save, then load.
     await act(async () => {
-      useAppStore.getState().updateSettings({ engine: "deepgram" });
+      useAppStore.getState().updateSettings({ engine: "deepgram_streaming" });
     });
 
     await act(async () => {
       await useAppStore.getState().loadSettings();
     });
 
-    expect(useAppStore.getState().settings.engine).toBe("deepgram");
+    expect(useAppStore.getState().settings.engine).toBe("deepgram_streaming");
     expect(useAppStore.getState().settingsLoaded).toBe(true);
   });
 
