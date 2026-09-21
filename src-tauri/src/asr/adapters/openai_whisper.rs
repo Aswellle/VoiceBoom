@@ -52,13 +52,13 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
             // Build request with Authorization header for OpenAI authentication
             let request = match http::Request::builder()
                 .uri(endpoint.clone())
-                .header("Authorization", format!("Bearer {}", api_key))
+                .header("Authorization", format!("Bearer {api_key}"))
                 .header("OpenAI-Beta", "realtime-v1")
                 .body(())
             {
                 Ok(req) => req,
                 Err(e) => {
-                    log::error!("Failed to build WS request: {}", e);
+                    log::error!("Failed to build WS request: {e}");
                     return;
                 }
             };
@@ -121,7 +121,7 @@ impl StreamingAsrEngine for OpenaiWhisperAdapter {
                     }
                 }
                 Err(e) => {
-                    log::error!("Failed to connect to OpenAI Whisper: {}", e);
+                    log::error!("Failed to connect to OpenAI Whisper: {e}");
                 }
             }
         });

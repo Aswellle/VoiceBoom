@@ -196,14 +196,13 @@ pub fn remove_version(models_dir: &Path, engine: &str, version: &str) -> Result<
     }
     // Remove empty engine dir.
     let engine_dir = models_dir.join(engine);
-    if engine_dir.exists() {
-        if std::fs::read_dir(&engine_dir)
+    if engine_dir.exists()
+        && std::fs::read_dir(&engine_dir)
             .map(|mut d| d.next().is_none())
             .unwrap_or(false)
         {
             std::fs::remove_dir_all(&engine_dir).ok();
         }
-    }
     Ok(())
 }
 

@@ -61,7 +61,7 @@ impl InjectionResult {
             InjectionResult::TargetUnavailable => {
                 "没有找到可输入的焦点区域，文字已复制到剪贴板，请手动粘贴".into()
             }
-            InjectionResult::Failed { reason } => format!("注入失败: {}", reason),
+            InjectionResult::Failed { reason } => format!("注入失败: {reason}"),
         }
     }
 }

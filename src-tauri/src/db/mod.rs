@@ -112,7 +112,7 @@ impl Database {
     /// Run all pending migrations.
     pub fn run_migrations(&self) -> anyhow::Result<()> {
         let current = self.get_schema_version()?;
-        log::info!("Database schema version: {}", current);
+        log::info!("Database schema version: {current}");
         // Migration 1: Add provider_config table (Phase 3).
         self.apply_migration(
             1,
@@ -221,7 +221,7 @@ impl Database {
             obj.insert(
                 "confidence".to_string(),
                 row.get::<_, Option<f64>>(4)?
-                    .and_then(|v| serde_json::Number::from_f64(v))
+                    .and_then(serde_json::Number::from_f64)
                     .map(serde_json::Value::Number)
                     .unwrap_or(serde_json::Value::Null),
             );

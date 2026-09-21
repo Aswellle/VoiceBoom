@@ -27,6 +27,12 @@ pub struct AudioCapture {
     sequence: Arc<AtomicU64>,
 }
 
+impl Default for AudioCapture {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AudioCapture {
     pub fn new() -> Self {
         Self {
@@ -97,7 +103,7 @@ impl AudioCapture {
             let supported = match device.default_input_config() {
                 Ok(c) => c,
                 Err(e) => {
-                    log::error!("Failed to get default input config: {}", e);
+                    log::error!("Failed to get default input config: {e}");
                     let _ = startup_tx.send(false);
                     return;
                 }
@@ -110,10 +116,7 @@ impl AudioCapture {
             let sample_format = supported.sample_format();
 
             log::info!(
-                "Audio device: {} Hz, {} channels, {:?}",
-                input_sample_rate,
-                channels,
-                sample_format
+                "Audio device: {input_sample_rate} Hz, {channels} channels, {sample_format:?}"
             );
 
             // Use the device's NATIVE sample rate — forcing 16kHz fails on devices
@@ -139,7 +142,7 @@ impl AudioCapture {
                 if let Err(e) = audio_tx_cb.try_send(frame) {
                     match e {
                         tokio::sync::mpsc::error::TrySendError::Full(_) => {
-                            log::debug!("audio queue full, dropping incoming frame #{}", seq);
+                            log::debug!("audio queue full, dropping incoming frame #{seq}");
                         }
                         tokio::sync::mpsc::error::TrySendError::Closed(_) => {
                             // Receiver dropped — capture is being stopped.
@@ -147,7 +150,7 @@ impl AudioCapture {
                     }
                 }
             };
-            let err_fn = |err| eprintln!("Audio stream error: {:?}", err);
+            let err_fn = |err| eprintln!("Audio stream error: {err:?}");
 
             // Resample ratio: input_sr / target_sr
             let resample_ratio = input_sample_rate as f32 / TARGET_SAMPLE_RATE as f32;
@@ -226,14 +229,14 @@ impl AudioCapture {
             let stream = match stream_result {
                 Ok(s) => s,
                 Err(e) => {
-                    log::error!("Failed to build input stream: {}", e);
+                    log::error!("Failed to build input stream: {e}");
                     let _ = startup_tx.send(false);
                     return;
                 }
             };
 
             if let Err(e) = stream.play() {
-                log::error!("Failed to play stream: {}", e);
+                log::error!("Failed to play stream: {e}");
                 let _ = startup_tx.send(false);
                 return;
             }
@@ -242,9 +245,7 @@ impl AudioCapture {
             let _ = startup_tx.send(true);
 
             log::info!(
-                "Audio capture started at {} Hz, resampling to {} Hz",
-                input_sample_rate,
-                TARGET_SAMPLE_RATE
+                "Audio capture started at {input_sample_rate} Hz, resampling to {TARGET_SAMPLE_RATE} Hz"
             );
 
             // Thread loop: wait for stop signal

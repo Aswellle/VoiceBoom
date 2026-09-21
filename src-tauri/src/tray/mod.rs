@@ -43,8 +43,8 @@ pub fn create_tray(app: &AppHandle<Runtime>) -> tauri::Result<TrayIcon<Runtime>>
         .tooltip("VoiceBoom AI — 实时流式语音输入法")
         .menu(&menu)
         .show_menu_on_left_click(false)
-        .on_menu_event(|app, event| handle_menu_event(app, event))
-        .on_tray_icon_event(|tray, event| handle_tray_event(tray, event));
+        .on_menu_event(handle_menu_event)
+        .on_tray_icon_event(handle_tray_event);
 
     if let Some(icon) = icon {
         builder = builder.icon(icon);

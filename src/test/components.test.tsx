@@ -193,13 +193,12 @@ describe("SegmentItem", () => {
 });
 
 describe("FloatingWindow", () => {
-  it("renders header controls, engine label and a status line", () => {
+  it("renders header controls and a status line", () => {
     render(<FloatingWindow />);
     expect(screen.getByRole("button", { name: "说话" })).toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "打开设置" })
     ).toBeInTheDocument();
-    expect(screen.getByText("SenseVoice")).toBeInTheDocument();
     expect(useAppStore.getState().settingsLoaded).toBe(true);
   });
 

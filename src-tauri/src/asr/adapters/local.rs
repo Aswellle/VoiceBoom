@@ -132,8 +132,7 @@ impl LocalAsrAdapter {
         // loader surface a cryptic error.
         if parts[0].trim().is_empty() || parts[1].trim().is_empty() || parts[2].trim().is_empty() {
             return Err(anyhow::anyhow!(
-                "Local engine endpoint has an empty vad/model/tokens path: {:?}",
-                endpoint
+                "Local engine endpoint has an empty vad/model/tokens path: {endpoint:?}"
             ));
         }
 
@@ -155,14 +154,12 @@ impl LocalAsrAdapter {
 
             self.vad = Some(
                 sherpa_onnx::VoiceActivityDetector::create(&vad_config, 20.0).ok_or_else(|| {
-                    anyhow::anyhow!("Failed to create Silero VAD from {}", vad_model)
+                    anyhow::anyhow!("Failed to create Silero VAD from {vad_model}")
                 })?,
             );
             self.last_vad_sensitivity = Some(config.vad_sensitivity);
             log::info!(
-                "Loaded Silero VAD from {} (threshold={:.2})",
-                vad_model,
-                threshold
+                "Loaded Silero VAD from {vad_model} (threshold={threshold:.2})"
             );
         }
 
@@ -178,11 +175,11 @@ impl LocalAsrAdapter {
             print!("Creating recognizer...");
             self.recognizer = Some(
                 sherpa_onnx::OfflineRecognizer::create(&rec_config).ok_or_else(|| {
-                    anyhow::anyhow!("Failed to create SenseVoice from {}", onnx_model)
+                    anyhow::anyhow!("Failed to create SenseVoice from {onnx_model}")
                 })?,
             );
             println!(" OK");
-            log::info!("Loaded SenseVoice from {}", onnx_model);
+            log::info!("Loaded SenseVoice from {onnx_model}");
         }
 
         Ok(())
@@ -270,7 +267,7 @@ impl StreamingAsrEngine for LocalAsrAdapter {
                     if let Some(result) = stream.get_result() {
                         let text = result.text.trim().to_string();
                         if !text.is_empty() {
-                            log::info!("PARTIAL: {}", text);
+                            log::info!("PARTIAL: {text}");
                             return Ok(Some(AsrResult {
                                 text,
                                 is_final: false,

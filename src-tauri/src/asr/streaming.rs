@@ -19,6 +19,12 @@ pub struct AsrManager {
     pub(crate) config: Option<AsrConfig>,
 }
 
+impl Default for AsrManager {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl AsrManager {
     pub fn new() -> Self {
         Self {
@@ -147,7 +153,7 @@ impl AsrManager {
         if let Some(session) = &self.session {
             let mut s = session.lock().await;
             if let Err(e) = s.finalize().await {
-                log::warn!("[AsrManager] finalize error: {}", e);
+                log::warn!("[AsrManager] finalize error: {e}");
             }
         }
 
@@ -158,8 +164,7 @@ impl AsrManager {
             if now > deadline {
                 timed_out = true;
                 log::warn!(
-                    "[AsrManager] finalize_and_drain timeout after {:?}",
-                    timeout
+                    "[AsrManager] finalize_and_drain timeout after {timeout:?}"
                 );
                 break;
             }

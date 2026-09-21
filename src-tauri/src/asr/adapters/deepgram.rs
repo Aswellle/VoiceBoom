@@ -153,7 +153,7 @@ impl DeepgramAdapter {
             endpoint, config.sample_rate
         );
         if !lang.is_empty() {
-            url.push_str(&format!("&language={}", lang));
+            url.push_str(&format!("&language={lang}"));
         }
         url
     }
@@ -162,12 +162,12 @@ impl DeepgramAdapter {
     fn build_request(&self, url: String, api_key: &str) -> anyhow::Result<impl IntoClientRequest> {
         let mut request = url
             .into_client_request()
-            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {e}"))?;
         // Auth via header (NOT in URL — avoids leaking key in logs).
         let headers = request.headers_mut();
         headers.insert(
             "Authorization",
-            format!("Token {}", api_key)
+            format!("Token {api_key}")
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid auth header"))?,
         );
@@ -187,7 +187,7 @@ impl AsrSession for DeepgramAdapter {
 
         let (ws_stream, _) = connect_async(request)
             .await
-            .map_err(|e| anyhow::anyhow!("Deepgram WS connection failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Deepgram WS connection failed: {e}"))?;
 
         let (mut ws_sink, mut ws_stream) = ws_stream.split();
 

@@ -49,14 +49,14 @@ fn init_file_logger() {
         "=== VoiceBoom debug log started at {:?} ===",
         std::time::SystemTime::now()
     );
-    let _ = writeln!(file, "Log file: {:?}", log_path);
+    let _ = writeln!(file, "Log file: {log_path:?}");
 
     let _ = log::set_boxed_logger(Box::new(Logger {
         target: std::sync::Mutex::new(file),
     }))
     .map(|()| log::set_max_level(log::LevelFilter::Debug));
 
-    log::info!("File logger initialized at {:?}", log_path);
+    log::info!("File logger initialized at {log_path:?}");
 }
 
 struct Logger {
@@ -103,6 +103,12 @@ pub struct AppState {
     pub injection_controller: std::sync::Mutex<crate::injection::InjectionController>,
     /// Model manager — local ASR model lifecycle (Phase 2).
     pub model_manager: crate::commands::ModelManagerHandle,
+}
+
+impl Default for AppState {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AppState {
@@ -191,7 +197,7 @@ pub fn run() {
             let db = Database::new(&db_path).expect("failed to initialize database");
             // Run database migrations (P1: schema version tracking).
             if let Err(e) = db.run_migrations() {
-                log::warn!("Database migration failed (non-fatal): {}", e);
+                log::warn!("Database migration failed (non-fatal): {e}");
             }
             *app.state::<AppState>().db.lock().unwrap() = Some(db);
 
@@ -213,7 +219,7 @@ pub fn run() {
 
             // Extract bundled resources on first launch
             if let Err(e) = resources::ensure_bundled_resources(&handle) {
-                log::warn!("Failed to extract bundled resources: {}", e);
+                log::warn!("Failed to extract bundled resources: {e}");
             }
 
             let resource_manager = ResourceManager::new(resource_dir);
@@ -231,11 +237,11 @@ pub fn run() {
                 let mut guard = mm.blocking_write();
                 guard.init_models_dir(models_dir.clone());
             }
-            log::info!("Model manager initialized at: {:?}", models_dir);
+            log::info!("Model manager initialized at: {models_dir:?}");
             // Initialize system tray
             match tray::create_tray(&handle) {
                 Ok(_) => log::info!("System tray created successfully"),
-                Err(e) => log::warn!("Failed to create system tray: {}", e),
+                Err(e) => log::warn!("Failed to create system tray: {e}"),
             }
 
             // Settings window behavior: closing it hides it instead of destroying it.

@@ -35,11 +35,11 @@ impl GlobalShortcutManager {
         // Step 1: Validate new shortcut can be parsed.
         let new_sc: Shortcut = shortcut
             .parse()
-            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e))?;
+            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{shortcut}': {e}"))?;
 
         // If same shortcut is already registered, no-op.
         if self.current_shortcut.as_deref() == Some(shortcut) {
-            log::info!("Shortcut '{}' already registered, skipping", shortcut);
+            log::info!("Shortcut '{shortcut}' already registered, skipping");
             return Ok(());
         }
 
@@ -65,7 +65,7 @@ impl GlobalShortcutManager {
                 // If new == old, skip unregister (shouldn't happen due to no-op check above).
                 if prev_sc != new_sc {
                     if let Err(e) = gs.unregister(prev_sc) {
-                        log::warn!("Failed to unregister old shortcut '{}': {}", prev, e);
+                        log::warn!("Failed to unregister old shortcut '{prev}': {e}");
                         // Non-fatal: new shortcut is registered, old one may still work.
                     }
                 }
@@ -73,7 +73,7 @@ impl GlobalShortcutManager {
         }
 
         self.current_shortcut = Some(shortcut.to_string());
-        log::info!("Registered global shortcut: {}", shortcut);
+        log::info!("Registered global shortcut: {shortcut}");
         Ok(())
     }
 
@@ -91,7 +91,7 @@ impl GlobalShortcutManager {
         // Validate.
         let new_sc: Shortcut = shortcut
             .parse()
-            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{}': {}", shortcut, e))?;
+            .map_err(|e| anyhow::anyhow!("无效的快捷键 '{shortcut}': {e}"))?;
 
         // No-op if same.
         if self.current_shortcut.as_deref() == Some(shortcut) {

@@ -309,7 +309,7 @@ impl FallbackKeyStore {
 impl SecureKeyStore for FallbackKeyStore {
     fn store(&self, account: &str, key: &str) -> KeyStoreResult<()> {
         std::fs::create_dir_all(&self.key_dir).map_err(|e| format!("Failed to create dir: {e}"))?;
-        std::fs::write(&self.key_path(account), key.as_bytes())
+        std::fs::write(self.key_path(account), key.as_bytes())
             .map_err(|e| format!("Failed to write key: {e}"))?;
         Ok(())
     }

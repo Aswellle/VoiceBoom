@@ -15,7 +15,7 @@ fn generate_session_id() -> String {
         .unwrap_or_default()
         .as_millis();
     let counter = SESSION_COUNTER.fetch_add(1, Ordering::SeqCst);
-    format!("{}-{}", ts, counter)
+    format!("{ts}-{counter}")
 }
 
 /// Emit a `recording:state` event with the current session snapshot.
@@ -92,15 +92,13 @@ pub async fn start_recording(
         session.engine = engine_name.clone();
         session.language = language_name.clone();
         session.begin_start().map_err(|e| {
-            log::warn!("[session={}] recording.start rejected: {}", session_id, e);
+            log::warn!("[session={session_id}] recording.start rejected: {e}");
             "已经在录音中，请先停止当前录音".to_string()
         })?;
         emit_state(&app_handle, &session);
     }
     log::info!(
-        "[session={}] recording.start engine={}",
-        session_id,
-        engine_name
+        "[session={session_id}] recording.start engine={engine_name}"
     );
 
     // The previous recording's bridge task may still be finishing its final
@@ -143,10 +141,7 @@ pub async fn start_recording(
     let mut resolved_endpoint = endpoint.clone();
     let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice);
     log::info!(
-        "[session={}] recording.config engine={} is_local={}",
-        session_id,
-        engine_name,
-        is_local
+        "[session={session_id}] recording.config engine={engine_name} is_local={is_local}"
     );
     if is_local {
         let local_engine = resources::ResourceEngine::SenseVoice;
@@ -159,9 +154,9 @@ pub async fn start_recording(
             let model_path = manager.model_path(local_engine);
             let tokens_path = manager.tokens_path(local_engine);
 
-            log::debug!("VAD path: {:?}", vad_path);
-            log::debug!("Model path: {:?}", model_path);
-            log::debug!("Tokens path: {:?}", tokens_path);
+            log::debug!("VAD path: {vad_path:?}");
+            log::debug!("Model path: {model_path:?}");
+            log::debug!("Tokens path: {tokens_path:?}");
 
             let vad_path = vad_path.ok_or_else(|| "Silero VAD 模型未安装".to_string())?;
             let model_path = model_path.ok_or_else(|| "SenseVoice ONNX 模型未安装".to_string())?;
@@ -169,10 +164,7 @@ pub async fn start_recording(
                 tokens_path.ok_or_else(|| "SenseVoice tokens 文件未安装".to_string())?;
 
             log::info!(
-                "Models found: vad={:?}, model={:?}, tokens={:?}",
-                vad_path,
-                model_path,
-                tokens_path
+                "Models found: vad={vad_path:?}, model={model_path:?}, tokens={tokens_path:?}"
             );
 
             // Build sherpa-onnx endpoint: vad\x1Emodel\x1Etokens
@@ -186,12 +178,12 @@ pub async fn start_recording(
 
         match model_check {
             Ok(ep) => {
-                log::info!("Endpoint resolved: {}", ep);
+                log::info!("Endpoint resolved: {ep}");
                 resolved_endpoint = Some(ep);
                 let _ = app_handle.emit("asr:status", "SenseVoice 本地引擎已就绪");
             }
             Err(e) => {
-                log::error!("Model check failed: {}", e);
+                log::error!("Model check failed: {e}");
                 let _ = app_handle.emit("asr:error", e.clone());
                 let mut session = state.session.lock().map_err(|e| e.to_string())?;
                 session.fail(&e);
@@ -217,7 +209,7 @@ pub async fn start_recording(
             }
         };
         let config = AsrConfig {
-            engine_type: engine_type,
+            engine_type,
             api_key: resolved_api_key,
             endpoint: resolved_endpoint.clone(),
             language: language.clone().unwrap_or_else(|| "auto".to_string()),
@@ -225,18 +217,16 @@ pub async fn start_recording(
             sample_rate: 16000,
         };
         log::info!(
-            "[session={}] asr.initialize engine={}",
-            session_id,
-            engine_name
+            "[session={session_id}] asr.initialize engine={engine_name}"
         );
         match asr.initialize(config).await {
             Ok(()) => {
-                log::info!("[session={}] asr.ready", session_id);
+                log::info!("[session={session_id}] asr.ready");
                 true
             }
             Err(e) => {
-                log::error!("ASR initialization failed: {}", e);
-                let _ = app_handle.emit("asr:error", format!("ASR 初始化失败: {}", e));
+                log::error!("ASR initialization failed: {e}");
+                let _ = app_handle.emit("asr:error", format!("ASR 初始化失败: {e}"));
                 false
             }
         }
@@ -279,7 +269,7 @@ pub async fn start_recording(
     {
         let mut session = state.session.lock().map_err(|e| e.to_string())?;
         session.mark_recording().map_err(|e| {
-            log::error!("[session={}] state transition failed: {}", session_id, e);
+            log::error!("[session={session_id}] state transition failed: {e}");
             e
         })?;
         emit_state(&app_handle, &session);
@@ -306,7 +296,7 @@ pub async fn start_recording(
                     ));
                 }
                 Err(e) => {
-                    log::warn!("[session={}] failed to capture target: {}", session_id, e);
+                    log::warn!("[session={session_id}] failed to capture target: {e}");
                 }
             }
         }
@@ -351,7 +341,7 @@ pub async fn start_recording(
     let mut had_partial: bool = false;
 
     tokio::spawn(async move {
-        log::info!("[session={}] bridge.start frames=0", session_id_clone);
+        log::info!("[session={session_id_clone}] bridge.start frames=0");
 
         loop {
             match audio_rx.recv().await {
@@ -372,12 +362,12 @@ pub async fn start_recording(
 
                     // Push audio to ASR and poll for results.
                     if let Err(e) = asr_manager_for_bridge.send_audio(&frame.samples).await {
-                        log::warn!("Failed to send audio frame: {}", e);
+                        log::warn!("Failed to send audio frame: {e}");
                     }
                     // Poll for events every frame so partials/finals surface promptly.
                     match asr_manager_for_bridge.receive_event().await {
                         Ok(Some(event)) => {
-                            let is_partial = event.text().map_or(false, |t| !t.trim().is_empty());
+                            let is_partial = event.text().is_some_and(|t| !t.trim().is_empty());
                             if is_partial {
                                 had_partial = true;
                             }
@@ -385,17 +375,14 @@ pub async fn start_recording(
                         }
                         Ok(None) => {}
                         Err(e) => {
-                            log::error!("ASR receive_event error: {}", e);
+                            log::error!("ASR receive_event error: {e}");
                         }
                     }
                 }
                 None => {
                     // Channel closed, audio capture stopped — finalize.
                     log::info!(
-                        "[session={}] recording.flush frames={} had_partial={}",
-                        session_id_clone,
-                        frame_count,
-                        had_partial
+                        "[session={session_id_clone}] recording.flush frames={frame_count} had_partial={had_partial}"
                     );
 
                     // ── State transition: Stopping → Finalizing ───────────
@@ -418,7 +405,7 @@ pub async fn start_recording(
 
                     // If timeout, emit finalization_timeout.
                     if timed_out {
-                        log::warn!("[session={}] finalization_timeout", session_id_clone);
+                        log::warn!("[session={session_id_clone}] finalization_timeout");
                         let _ = app_handle_clone.emit(
                             "asr:timeout",
                             serde_json::json!({
@@ -430,9 +417,7 @@ pub async fn start_recording(
                     // If no events at all and no partials, emit error.
                     if events.is_empty() && !had_partial {
                         log::warn!(
-                            "[session={}] no text recognized ({} frames)",
-                            session_id_clone,
-                            frame_count
+                            "[session={session_id_clone}] no text recognized ({frame_count} frames)"
                         );
                         let _ =
                             app_handle_clone.emit("asr:error", "没有识别到语音内容，请检查麦克风");
@@ -477,11 +462,11 @@ pub async fn stop_recording(
         let mut session = state.session.lock().map_err(|e| e.to_string())?;
         let sid = session.session_id.clone();
         session.begin_stop().map_err(|e| {
-            log::warn!("[session={}] recording.stop rejected: {}", sid, e);
+            log::warn!("[session={sid}] recording.stop rejected: {e}");
             e
         })?;
         emit_state(&app_handle, &session);
-        log::info!("[session={}] recording.stop", sid);
+        log::info!("[session={sid}] recording.stop");
     }
 
     if let Some(ref mut audio) = *state.audio_capture.lock().map_err(|e| e.to_string())? {
@@ -615,7 +600,7 @@ pub fn switch_engine(
     state: State<'_, AppState>,
     engine: String,
 ) -> Result<serde_json::Value, String> {
-    log::info!("Switching engine to: {}", engine);
+    log::info!("Switching engine to: {engine}");
 
     let engine_type = parse_engine_type(&engine);
     let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice); // Only local engine now
@@ -693,7 +678,7 @@ pub fn install_model(
     let manager = guard.as_ref().ok_or("Resource manager not initialized")?;
 
     let engine_type = resources::ResourceEngine::from_str(&engine)
-        .ok_or_else(|| format!("Unknown engine: {}", engine))?;
+        .ok_or_else(|| format!("Unknown engine: {engine}"))?;
 
     // Accept either a single path or a list. FunASR needs two GGUF files
     // (ASR model + FSMN VAD), so installing several at once is the norm.
@@ -709,14 +694,14 @@ pub fn install_model(
     for input in inputs {
         let source = std::path::PathBuf::from(&input);
         if !source.exists() {
-            return Err(format!("路径不存在: {}", input));
+            return Err(format!("路径不存在: {input}"));
         }
 
         if source.is_dir() {
             // Copy every model-shaped file in the directory. The previous code
             // resolved a filename here but then called fs::copy on the directory
             // itself, which always failed.
-            let entries = std::fs::read_dir(&source).map_err(|e| format!("读取目录失败: {}", e))?;
+            let entries = std::fs::read_dir(&source).map_err(|e| format!("读取目录失败: {e}"))?;
             let mut found = false;
             for entry in entries.flatten() {
                 let path = entry.path();
@@ -738,14 +723,13 @@ pub fn install_model(
                     .map(|n| n.to_string_lossy().to_string())
                     .ok_or_else(|| "无效的文件名".to_string())?;
                 std::fs::copy(&path, models_dir.join(&name))
-                    .map_err(|e| format!("复制 {} 失败: {}", name, e))?;
+                    .map_err(|e| format!("复制 {name} 失败: {e}"))?;
                 installed.push(name);
                 found = true;
             }
             if !found {
                 return Err(format!(
-                    "目录中没有找到 .onnx/.txt/.bin/.gguf 模型文件: {}",
-                    input
+                    "目录中没有找到 .onnx/.txt/.bin/.gguf 模型文件: {input}"
                 ));
             }
         } else {
@@ -754,7 +738,7 @@ pub fn install_model(
                 .map(|n| n.to_string_lossy().to_string())
                 .ok_or_else(|| "无效的文件路径".to_string())?;
             std::fs::copy(&source, models_dir.join(&name))
-                .map_err(|e| format!("复制 {} 失败: {}", name, e))?;
+                .map_err(|e| format!("复制 {name} 失败: {e}"))?;
             installed.push(name);
         }
     }
@@ -783,7 +767,7 @@ pub fn install_model(
 #[tauri::command]
 pub fn get_resource_endpoint(state: State<'_, AppState>, engine: String) -> Result<String, String> {
     let engine_type = resources::ResourceEngine::from_str(&engine)
-        .ok_or_else(|| format!("Unknown engine: {}", engine))?;
+        .ok_or_else(|| format!("Unknown engine: {engine}"))?;
 
     // Build sherpa-onnx endpoint from model paths
     let guard = state.resource_manager.lock().map_err(|e| e.to_string())?;
@@ -829,10 +813,10 @@ pub fn open_settings<R: tauri::Runtime>(app_handle: AppHandle<R>) -> Result<(), 
     let _ = window.set_always_on_top(true);
     window
         .show()
-        .map_err(|e| format!("Failed to show settings: {}", e))?;
+        .map_err(|e| format!("Failed to show settings: {e}"))?;
     window
         .set_focus()
-        .map_err(|e| format!("Failed to focus settings: {}", e))?;
+        .map_err(|e| format!("Failed to focus settings: {e}"))?;
     Ok(())
 }
 
@@ -849,13 +833,11 @@ pub async fn inject_text(
     mode: Option<String>,
 ) -> Result<serde_json::Value, String> {
     if text.is_empty() {
-        return Ok(
-            serde_json::to_value(&crate::injection::InjectionResult::Injected {
+        return serde_json::to_value(&crate::injection::InjectionResult::Injected {
                 method: crate::injection::InjectionMethod::ClipboardPaste,
                 verified: false,
             })
-            .map_err(|e| format!("{e}"))?,
-        );
+            .map_err(|e| format!("{e}"));
     }
 
     let mode = mode
@@ -880,12 +862,12 @@ pub async fn inject_text(
                 match Target::foreground() {
                     Ok(t) => crate::injection::InjectionTarget::new(t.hwnd, t.pid, t.exe, t.class),
                     Err(e) => {
-                        return Ok(serde_json::to_value(
+                        return serde_json::to_value(
                             &crate::injection::InjectionResult::Failed {
                                 reason: format!("No target: {e}"),
                             },
                         )
-                        .map_err(|e| format!("{e}"))?);
+                        .map_err(|e| format!("{e}"));
                     }
                 }
             }
@@ -924,7 +906,7 @@ pub async fn inject_text(
     };
 
     if let Err(result) = controller.validate(&request, active_session_id.as_deref()) {
-        return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+        return serde_json::to_value(&result).map_err(|e| format!("{e}"));
     }
 
     // Mark in-flight.
@@ -949,20 +931,20 @@ pub async fn inject_text(
             let result = crate::injection::InjectionResult::TargetChanged {
                 captured: target.exe.clone(),
             };
-            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+            return serde_json::to_value(&result).map_err(|e| format!("{e}"));
         }
         crate::injection::TargetValidation::WindowDestroyed
         | crate::injection::TargetValidation::ProcessExited => {
             let result = crate::injection::InjectionResult::Failed {
                 reason: "目标窗口已关闭".into(),
             };
-            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+            return serde_json::to_value(&result).map_err(|e| format!("{e}"));
         }
         crate::injection::TargetValidation::PermissionDenied => {
             let result = crate::injection::InjectionResult::PermissionDenied {
                 reason: "权限不足".into(),
             };
-            return Ok(serde_json::to_value(&result).map_err(|e| format!("{e}"))?);
+            return serde_json::to_value(&result).map_err(|e| format!("{e}"));
         }
     }
 
@@ -1476,7 +1458,7 @@ pub fn save_provider_config(
     let db = db.as_ref().ok_or("数据库未初始化")?;
 
     // Load existing or create default.
-    let mut cfg = load_single_config(&db, id).unwrap_or_else(|| ProviderConfig::new(id));
+    let mut cfg = load_single_config(db, id).unwrap_or_else(|| ProviderConfig::new(id));
 
     if let Some(ep) = endpoint {
         // Validate endpoint scheme at the trust boundary. Reject values that
@@ -1485,14 +1467,13 @@ pub fn save_provider_config(
         let allowed = ["http://", "https://", "ws://", "wss://"];
         if !allowed.iter().any(|scheme| ep.starts_with(scheme)) {
             return Err(format!(
-                "无效的端点 URL '{}': 必须使用 http://, https://, ws:// 或 wss:// 协议",
-                ep
+                "无效的端点 URL '{ep}': 必须使用 http://, https://, ws:// 或 wss:// 协议"
             ));
         }
         cfg.endpoint = ep;
     }
 
-    save_single_config(&db, &cfg)?;
+    save_single_config(db, &cfg)?;
     Ok(())
 }
 
@@ -1579,7 +1560,7 @@ fn load_provider_configs(state: &AppState) -> Result<Vec<(ProviderId, ProviderCo
         ProviderId::OpenAIWhisper,
         ProviderId::CustomOpenAICompatible,
     ] {
-        let cfg = load_single_config(&db, id).unwrap_or_else(|| ProviderConfig::new(id));
+        let cfg = load_single_config(db, id).unwrap_or_else(|| ProviderConfig::new(id));
         configs.push((id, cfg));
     }
     Ok(configs)

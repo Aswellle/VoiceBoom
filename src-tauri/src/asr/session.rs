@@ -107,7 +107,7 @@ pub trait AsrSession: Send + Sync {
 ///
 /// The old `StreamingAsrEngine` / `AsrResult` types are preserved for backward
 /// compatibility during the migration. New code should use `AsrSession` / `AsrEvent`.
-
+///
 /// Adapter: wraps a legacy `StreamingAsrEngine` as an `AsrSession`.
 /// This allows gradual migration — old adapters keep working while new ones
 /// implement `AsrSession` directly.

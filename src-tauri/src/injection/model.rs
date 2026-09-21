@@ -176,20 +176,20 @@ impl InjectionResult {
                 }
             }
             InjectionResult::TargetChanged { captured } => {
-                format!("输入目标已切换（{}），文字已复制到剪贴板", captured)
+                format!("输入目标已切换（{captured}），文字已复制到剪贴板")
             }
             InjectionResult::PermissionDenied { reason } => {
-                format!("无法注入（{}），文字已复制到剪贴板", reason)
+                format!("无法注入（{reason}），文字已复制到剪贴板")
             }
             InjectionResult::ClipboardFallback { reason } => {
-                format!("已复制到剪贴板（{}），请手动粘贴", reason)
+                format!("已复制到剪贴板（{reason}），请手动粘贴")
             }
             InjectionResult::DuplicateIgnored => "重复注入已忽略".into(),
             InjectionResult::StaleSession => "旧会话结果已忽略".into(),
             InjectionResult::TargetUnavailable => {
                 "没有找到可输入的焦点区域，文字已复制到剪贴板，请手动粘贴".into()
             }
-            InjectionResult::Failed { reason } => format!("注入失败: {}", reason),
+            InjectionResult::Failed { reason } => format!("注入失败: {reason}"),
         }
     }
 }

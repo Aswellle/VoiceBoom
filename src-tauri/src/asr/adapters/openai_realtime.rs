@@ -116,18 +116,18 @@ impl OpenaiRealtimeAdapter {
             .clone()
             .unwrap_or_else(|| "wss://api.openai.com/v1/realtime".to_string());
         // Model is required for realtime. Default to gpt-4o-transcribe.
-        format!("{}?model=gpt-4o-transcribe", endpoint)
+        format!("{endpoint}?model=gpt-4o-transcribe")
     }
 
     /// Build the WebSocket request with auth headers.
     fn build_request(&self, url: String, api_key: &str) -> anyhow::Result<impl IntoClientRequest> {
         let mut request = url
             .into_client_request()
-            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {e}"))?;
         let headers = request.headers_mut();
         headers.insert(
             "Authorization",
-            format!("Bearer {}", api_key)
+            format!("Bearer {api_key}")
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid auth header"))?,
         );
@@ -176,7 +176,7 @@ impl AsrSession for OpenaiRealtimeAdapter {
 
         let (ws_stream, _) = connect_async(request)
             .await
-            .map_err(|e| anyhow::anyhow!("OpenAI WS connection failed: {}", e))?;
+            .map_err(|e| anyhow::anyhow!("OpenAI WS connection failed: {e}"))?;
 
         let (mut ws_sink, mut ws_stream) = ws_stream.split();
 

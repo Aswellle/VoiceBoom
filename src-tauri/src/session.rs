@@ -13,7 +13,6 @@
 //!                       ◄──(flush timeout)──→ Error
 //! ```
 
-use serde;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
