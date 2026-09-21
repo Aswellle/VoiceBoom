@@ -25,12 +25,23 @@ use crate::asr::{AsrConfig, AsrEvent, AsrSession};
 /// Parsed Deepgram WebSocket event.
 #[derive(Debug, PartialEq)]
 pub enum DeepgramEvent {
-    Partial { text: String, confidence: Option<f64> },
-    SegmentFinal { text: String, confidence: Option<f64> },
-    UtteranceFinal { text: String, confidence: Option<f64> },
+    Partial {
+        text: String,
+        confidence: Option<f64>,
+    },
+    SegmentFinal {
+        text: String,
+        confidence: Option<f64>,
+    },
+    UtteranceFinal {
+        text: String,
+        confidence: Option<f64>,
+    },
     SpeechStarted,
     UtteranceEnd,
-    Error { message: String },
+    Error {
+        message: String,
+    },
     Closed,
 }
 
@@ -148,14 +159,10 @@ impl DeepgramAdapter {
     }
 
     /// Build the WebSocket request with auth header.
-    fn build_request(
-        &self,
-        url: String,
-        api_key: &str,
-    ) -> anyhow::Result<impl IntoClientRequest> {
-        let mut request = url.into_client_request().map_err(|e| {
-            anyhow::anyhow!("Failed to build WS request: {}", e)
-        })?;
+    fn build_request(&self, url: String, api_key: &str) -> anyhow::Result<impl IntoClientRequest> {
+        let mut request = url
+            .into_client_request()
+            .map_err(|e| anyhow::anyhow!("Failed to build WS request: {}", e))?;
         // Auth via header (NOT in URL — avoids leaking key in logs).
         let headers = request.headers_mut();
         headers.insert(
@@ -164,12 +171,9 @@ impl DeepgramAdapter {
                 .parse()
                 .map_err(|_| anyhow::anyhow!("Invalid auth header"))?,
         );
-        headers.insert(
-            "Sec-WebSocket-Protocol",
-            "token".parse().unwrap(),
-        );
+        headers.insert("Sec-WebSocket-Protocol", "token".parse().unwrap());
         Ok(request)
-}
+    }
 }
 
 #[async_trait]
@@ -181,9 +185,9 @@ impl AsrSession for DeepgramAdapter {
         let url = self.build_url(config);
         let request = self.build_request(url, &api_key)?;
 
-        let (ws_stream, _) = connect_async(request).await.map_err(|e| {
-            anyhow::anyhow!("Deepgram WS connection failed: {}", e)
-        })?;
+        let (ws_stream, _) = connect_async(request)
+            .await
+            .map_err(|e| anyhow::anyhow!("Deepgram WS connection failed: {}", e))?;
 
         let (mut ws_sink, mut ws_stream) = ws_stream.split();
 
@@ -199,8 +203,7 @@ impl AsrSession for DeepgramAdapter {
 
         // Spawn background WS task.
         tokio::spawn(async move {
-            let mut ping_interval =
-                tokio::time::interval(std::time::Duration::from_secs(30));
+            let mut ping_interval = tokio::time::interval(std::time::Duration::from_secs(30));
 
             loop {
                 tokio::select! {
@@ -291,9 +294,10 @@ impl AsrSession for DeepgramAdapter {
     }
 
     async fn push_audio(&mut self, frame: &[f32]) -> anyhow::Result<()> {
-        let sender = self.cmd_tx.as_ref().ok_or_else(|| {
-            anyhow::anyhow!("Deepgram: not started")
-        })?;
+        let sender = self
+            .cmd_tx
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("Deepgram: not started"))?;
         // Convert f32 samples to PCM16 bytes.
         let pcm_bytes: Vec<u8> = frame
             .iter()
@@ -310,15 +314,16 @@ impl AsrSession for DeepgramAdapter {
     }
 
     async fn next_event(&mut self) -> anyhow::Result<Option<AsrEvent>> {
-        let receiver = self.event_rx.as_mut().ok_or_else(|| {
-            anyhow::anyhow!("Deepgram: not started")
-        })?;
+        let receiver = self
+            .event_rx
+            .as_mut()
+            .ok_or_else(|| anyhow::anyhow!("Deepgram: not started"))?;
         match receiver.try_recv() {
             Ok(event) => Ok(Some(event)),
             Err(mpsc::error::TryRecvError::Empty) => Ok(None),
-            Err(mpsc::error::TryRecvError::Disconnected) => Err(anyhow::anyhow!(
-                "Deepgram: event channel disconnected"
-            )),
+            Err(mpsc::error::TryRecvError::Disconnected) => {
+                Err(anyhow::anyhow!("Deepgram: event channel disconnected"))
+            }
         }
     }
 
