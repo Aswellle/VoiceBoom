@@ -83,8 +83,8 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-        restore-keys: |
-          ${{ runner.os }}-cargo-
+          restore-keys: |
+            ${{ runner.os }}-cargo-
       - name: Format check
         run: cargo fmt --check --locked
         working-directory: src-tauri
@@ -136,8 +136,8 @@ jobs:
             ~/.cargo/git
             src-tauri/target
           key: windows-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
-        restore-keys: |
-          windows-cargo-
+          restore-keys: |
+            windows-cargo-
 
       - name: Clippy
         run: cargo clippy --locked --all-targets -- -D warnings
