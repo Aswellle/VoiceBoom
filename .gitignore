@@ -66,6 +66,9 @@ playwright-report/
 .playwright/
 *.vitest/
 
+# TypeScript incremental build cache
+*.tsbuildinfo
+
 # Python
 __pycache__/
 
