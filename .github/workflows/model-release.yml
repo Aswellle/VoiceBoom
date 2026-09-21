@@ -32,15 +32,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Cache model downloads
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .model-cache
           key: voiceboom-model-${{ hashFiles('models/registry.json') }}
@@ -63,7 +63,7 @@ jobs:
             --dir model-release
 
       - name: Upload model artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VoiceBoom-models
           path: model-release/*
@@ -80,7 +80,7 @@ jobs:
 
     steps:
       - name: Download model artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: model-assets
 

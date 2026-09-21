@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
@@ -93,7 +93,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -106,7 +106,7 @@ jobs:
           targets: x86_64-pc-windows-msvc
 
       - name: Cache sherpa-onnx
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .cache/sherpa-onnx
           key: windows-sherpa-onnx-1.13.8-x64
@@ -204,7 +204,7 @@ jobs:
           }
 
       - name: Upload Windows artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: voiceboom-windows-x64
           path: release-artifacts/*
@@ -222,7 +222,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -314,7 +314,7 @@ jobs:
             | head -40
 
       - name: Upload macOS arm64 app bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VoiceBoom-macos-arm64-appbundle
           path: release-intermediate/VoiceBoom-macos-arm64-appbundle.tar.gz
@@ -332,7 +332,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Setup Bun
         uses: oven-sh/setup-bun@v2
@@ -411,7 +411,7 @@ jobs:
             "VoiceBoom.app"
 
       - name: Upload macOS x86_64 app bundle
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: VoiceBoom-macos-x64-appbundle
           path: release-intermediate/VoiceBoom-macos-x64-appbundle.tar.gz
@@ -431,16 +431,16 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download arm64 app bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: VoiceBoom-macos-arm64-appbundle
           path: incoming/arm64
 
       - name: Download x86_64 app bundle
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           name: VoiceBoom-macos-x64-appbundle
           path: incoming/x86_64
@@ -565,7 +565,7 @@ jobs:
           ls -lah release
 
       - name: Upload Universal release artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: voiceboom-macos-universal
           path: |
@@ -598,10 +598,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v5
+        uses: actions/checkout@v7
 
       - name: Download all release artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: release-assets
 
