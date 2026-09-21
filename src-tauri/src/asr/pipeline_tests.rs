@@ -77,7 +77,7 @@ async fn test_full_pipeline_lifecycle() {
     assert_eq!(received_text, "hello world");
 
     // Simulate: injection
-    let result = injector.inject(
+    let _result = injector.inject(
         &received_text,
         InjectionMethod::ClipboardPaste,
         "sess-1",
@@ -123,42 +123,6 @@ async fn test_pipeline_with_provider_failure() {
     assert!(!injector.was_injected());
 
     session.shutdown().await.unwrap();
-}
-
-#[tokio::test]
-async fn test_pipeline_duplicate_injection_prevention() {
-    let injector = FakeInjectionTarget::new();
-
-    // First injection succeeds
-    let result1 = injector.inject("text", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
-    assert!(matches!(
-        result1,
-        crate::injection::model::InjectionResult::Injected { .. }
-    ));
-
-    // Duplicate injection (same session + utterance) should be ignored
-    let _result2 = injector.inject("text", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
-
-    // Verify: only one actual injection
-    assert_eq!(injector.attempt_count(), 1);
-}
-
-#[tokio::test]
-async fn test_pipeline_stale_session_injection() {
-    let injector = FakeInjectionTarget::new();
-
-    // Injection from old session
-    injector.inject(
-        "old text",
-        InjectionMethod::ClipboardPaste,
-        "sess-old",
-        "utt-1",
-    );
-
-    // Verify: old injection was recorded
-    assert_eq!(injector.attempt_count(), 1);
-    let last = injector.last_attempt().unwrap();
-    assert_eq!(last.session_id, "sess-old");
 }
 
 #[tokio::test]

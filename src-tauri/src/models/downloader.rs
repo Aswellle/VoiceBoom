@@ -65,7 +65,7 @@ pub async fn download(
     url: &str,
     dest: &Path,
     handle: &DownloadHandle,
-    on_progress: Option<ProgressFn>,
+    on_progress: Option<&ProgressFn>,
 ) -> Result<(), String> {
     let part_path = dest.with_extension(
         dest.extension()
@@ -87,7 +87,7 @@ pub async fn download(
             tokio::time::sleep(Duration::from_secs(1 << (attempt - 1))).await;
         }
 
-        match attempt_download(client, url, &part_path, resume_from, handle, &on_progress).await {
+        match attempt_download(client, url, &part_path, resume_from, handle, on_progress).await {
             Ok(()) => {
                 // Success — rename .part → final.
                 std::fs::rename(&part_path, dest).map_err(|e| {
@@ -115,13 +115,116 @@ pub async fn download(
     ))
 }
 
+/// Whether offline mode is active (`VOICEBOOM_OFFLINE=1`).
+///
+/// In offline mode the downloader refuses to touch the network: a build or
+/// download either works from what is already on disk, or fails loudly.
+pub fn is_offline() -> bool {
+    std::env::var("VOICEBOOM_OFFLINE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
+}
+
+/// Verify there is room for `required_bytes` on the filesystem holding `path`.
+pub fn check_disk_space(path: &Path, required_bytes: u64) -> Result<(), String> {
+    let free = free_bytes(path)?;
+    if free < required_bytes {
+        return Err(format!(
+            "磁盘空间不足：可用 {free} 字节，需要 {required_bytes} 字节"
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+fn free_bytes(path: &Path) -> Result<u64, String> {
+    use std::os::windows::ffi::OsStrExt;
+    use winapi::um::fileapi::GetDiskFreeSpaceExW;
+
+    let mut wide: Vec<u16> = path.as_os_str().encode_wide().collect();
+    wide.push(0);
+
+    let mut available: u64 = 0;
+    let ok = unsafe {
+        GetDiskFreeSpaceExW(
+            wide.as_ptr(),
+            &mut available as *mut u64 as *mut _,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+        )
+    };
+    if ok == 0 {
+        return Err(format!("无法读取磁盘空间: {}", path.display()));
+    }
+    Ok(available)
+}
+
+#[cfg(unix)]
+fn free_bytes(path: &Path) -> Result<u64, String> {
+    use std::ffi::CString;
+    use std::os::unix::ffi::OsStrExt;
+
+    let c_path =
+        CString::new(path.as_os_str().as_bytes()).map_err(|_| "路径包含非法字符".to_string())?;
+
+    let mut stat: libc::statvfs = unsafe { std::mem::zeroed() };
+    let rc = unsafe { libc::statvfs(c_path.as_ptr(), &mut stat) };
+    if rc != 0 {
+        return Err(format!("无法读取磁盘空间: {}", path.display()));
+    }
+    Ok(stat.f_bavail as u64 * stat.f_frsize as u64)
+}
+
+/// Download from an ordered list of sources, falling back on failure.
+///
+/// Returns the index of the source that succeeded. In offline mode, or when
+/// every source fails, returns an error naming what was attempted.
+pub async fn download_from_sources(
+    client: &reqwest::Client,
+    sources: &[String],
+    dest: &Path,
+    handle: &DownloadHandle,
+    on_progress: Option<&ProgressFn>,
+) -> Result<usize, String> {
+    if sources.is_empty() {
+        return Err("模型没有配置下载源".to_string());
+    }
+
+    if is_offline() {
+        return Err("离线模式已启用，无法下载模型".to_string());
+    }
+
+    let mut failures: Vec<String> = Vec::new();
+
+    for (idx, source) in sources.iter().enumerate() {
+        if handle.is_cancelled() {
+            return Err("下载已取消".to_string());
+        }
+
+        match download(client, source, dest, handle, on_progress).await {
+            Ok(()) => return Ok(idx),
+            Err(e) => {
+                // Cancellation is terminal — never fall through to another source.
+                if e == "下载已取消" {
+                    return Err(e);
+                }
+                log::warn!("下载源 {source} 失败: {e}");
+                failures.push(format!("源 {} ({source}): {e}", idx + 1));
+            }
+        }
+    }
+
+    cleanup_part(dest);
+    Err(format!("所有下载源均失败:\n{}", failures.join("\n")))
+}
+
 async fn attempt_download(
     client: &reqwest::Client,
     url: &str,
     part_path: &Path,
     resume_from: u64,
     handle: &DownloadHandle,
-    on_progress: &Option<ProgressFn>,
+    on_progress: Option<&ProgressFn>,
 ) -> Result<(), String> {
     let mut request = client.get(url);
     if resume_from > 0 {

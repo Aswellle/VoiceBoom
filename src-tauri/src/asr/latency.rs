@@ -227,7 +227,7 @@ mod tests {
     fn test_tracker_max_records() {
         let tracker = LatencyTracker::new(3);
         for i in 0..5 {
-            tracker.start_session(format!("session-{}", i));
+            tracker.start_session(format!("session-{i}"));
         }
         let records = tracker.records();
         assert_eq!(records.len(), 3);

@@ -59,8 +59,9 @@ mod tests {
 
     #[test]
     fn test_default_capacity_calculation() {
-        // 500ms / 64ms ≈ 7-8 frames
-        assert!(DEFAULT_QUEUE_CAPACITY >= 6 && DEFAULT_QUEUE_CAPACITY <= 10);
+        // 500ms / 64ms ≈ 7-8 frames — checked at compile time so the
+        // assertion cannot be optimized away.
+        const { assert!(DEFAULT_QUEUE_CAPACITY >= 6 && DEFAULT_QUEUE_CAPACITY <= 10) };
     }
 
     #[test]
@@ -164,7 +165,7 @@ mod tests {
     /// sustained production (memory safety).
     #[test]
     fn test_sustained_production_bounded() {
-        let _capacity = 8;
+        let (tx, _rx) = bounded_audio_channel_with_capacity(8);
 
         // Send 1000 frames without consuming
         let mut last_sent_ok = false;

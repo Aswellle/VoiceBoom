@@ -45,8 +45,11 @@ hex = "0.4"
 dirs = "5"
 # Platform-specific secure storage.
 [target.'cfg(windows)'.dependencies]
-winapi = { version = "0.3", features = ["dpapi", "winbase"] }
+winapi = { version = "0.3", features = ["dpapi", "winbase", "fileapi"] }
 win-text-inject = { path = "vendor/win-text-inject" }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

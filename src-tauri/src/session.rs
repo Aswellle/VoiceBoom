@@ -3,7 +3,7 @@
 //! Architecture Lock A: Recording Session 是录音生命周期唯一权威状态源。
 //!
 //! State flow:
-//! ```
+//! ```text
 //! Idle ──(start)──→ Starting ──(init ok)──→ Recording ──(stop)──→ Stopping
 //!                                                             │
 //! Error ◄──(init fail)──┘                                     ▼
@@ -202,7 +202,6 @@ fn now_ms() -> u64 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asr::engine_trait::{AsrEngineType, AsrResult};
     fn make_session() -> RecordingSession {
         RecordingSession::new("test-123".into(), "funasr".into(), "auto".into())
     }

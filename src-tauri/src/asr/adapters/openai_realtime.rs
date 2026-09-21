@@ -376,7 +376,6 @@ mod tests {
     use super::*;
 
     /// Fixtures matching the current OpenAI Realtime protocol.
-
     fn session_created_json() -> serde_json::Value {
         serde_json::json!({
             "type": "session.created",
@@ -467,7 +466,7 @@ mod tests {
     fn test_build_url_contains_model() {
         let adapter = OpenaiRealtimeAdapter::new();
         let config = AsrConfig {
-            engine_type: crate::asr::AsrEngineType::OpenAIRealtimeTranscription,
+            engine_type: crate::asr::engine_trait::AsrEngineType::OpenAIRealtimeTranscription,
             api_key: Some("test-key".into()),
             endpoint: None,
             language: "en".into(),
@@ -494,7 +493,7 @@ mod tests {
     fn test_build_session_update_contains_required_fields() {
         let adapter = OpenaiRealtimeAdapter::new();
         let config = AsrConfig {
-            engine_type: crate::asr::AsrEngineType::OpenAIRealtimeTranscription,
+            engine_type: crate::asr::engine_trait::AsrEngineType::OpenAIRealtimeTranscription,
             api_key: None,
             endpoint: None,
             language: "en".into(),

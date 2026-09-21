@@ -368,7 +368,6 @@ mod tests {
 
     /// Fixtures matching the current Deepgram Live Streaming protocol.
     /// Source: https://developers.deepgram.com/docs/live-streaming-audio
-
     fn partial_json() -> serde_json::Value {
         serde_json::json!({
             "type": "Results",
@@ -517,7 +516,7 @@ mod tests {
     fn test_build_url_endpointing_is_integer() {
         let adapter = DeepgramAdapter::new();
         let config = AsrConfig {
-            engine_type: crate::asr::AsrEngineType::DeepgramStreaming,
+            engine_type: crate::asr::engine_trait::AsrEngineType::DeepgramStreaming,
             api_key: None,
             endpoint: None,
             language: "en".into(),
@@ -548,7 +547,7 @@ mod tests {
     fn test_build_url_contains_required_params() {
         let adapter = DeepgramAdapter::new();
         let config = AsrConfig {
-            engine_type: crate::asr::AsrEngineType::DeepgramStreaming,
+            engine_type: crate::asr::engine_trait::AsrEngineType::DeepgramStreaming,
             api_key: Some("test-key".into()),
             endpoint: None,
             language: "en".into(),
@@ -572,7 +571,7 @@ mod tests {
     fn test_build_url_omits_language_for_auto() {
         let adapter = DeepgramAdapter::new();
         let config = AsrConfig {
-            engine_type: crate::asr::AsrEngineType::DeepgramStreaming,
+            engine_type: crate::asr::engine_trait::AsrEngineType::DeepgramStreaming,
             api_key: None,
             endpoint: None,
             language: "auto".into(),

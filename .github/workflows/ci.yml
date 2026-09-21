@@ -86,7 +86,7 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
       - name: Format check
-        run: cargo fmt --check --locked
+        run: cargo fmt --check
         working-directory: src-tauri
 
       - name: Clippy

@@ -246,7 +246,7 @@ impl AsrManager {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::asr::session::{AsrEvent, AsrSession, FakeAsrSession};
+    use crate::asr::session::{AsrEvent, FakeAsrSession};
     use std::sync::Arc;
     use tokio::sync::Mutex;
 
@@ -344,7 +344,7 @@ mod tests {
         assert!(!events1.is_empty());
         assert!(!timed_out1);
 
-        let (events2, timed_out2) = mgr
+        let (_events2, timed_out2) = mgr
             .finalize_and_drain(std::time::Duration::from_millis(200))
             .await;
         assert!(timed_out2);
@@ -368,8 +368,7 @@ mod tests {
         // Should complete near the timeout, not a fixed 500ms sleep.
         assert!(
             elapsed < std::time::Duration::from_millis(500),
-            "finalize_and_drain took {:?}, expected < 500ms",
-            elapsed
+            "finalize_and_drain took {elapsed:?}, expected < 500ms"
         );
     }
 }

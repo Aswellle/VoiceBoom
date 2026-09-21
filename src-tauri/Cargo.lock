@@ -5268,6 +5268,7 @@ dependencies = [
  "futures",
  "hex",
  "http",
+ "libc",
  "log",
  "num_cpus",
  "reqwest 0.12.28",

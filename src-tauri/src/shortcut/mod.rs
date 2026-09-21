@@ -213,7 +213,6 @@ impl<'a> Drop for ShortcutRollbackGuard<'a> {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
 
     /// Note: These tests verify the logic flow. Full integration tests
     /// require a Tauri app context which is not available in unit tests.

@@ -48,6 +48,8 @@ pub enum ModelState {
 /// Top-level registry, parsed from `models/registry.json` (spec section 6).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ModelRegistry {
+    /// Accepts both `schemaVersion` (registry.json) and `schema_version`.
+    #[serde(alias = "schemaVersion")]
     pub schema_version: u32,
     pub channel: String,
     pub models: Vec<ModelInfo>,
@@ -67,7 +69,8 @@ pub struct ModelInfo {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ArchiveInfo {
-    pub url: String,
+    /// Download sources in priority order; later entries are fallbacks.
+    pub sources: Vec<String>,
     pub sha256: String,
     pub size: u64,
 }

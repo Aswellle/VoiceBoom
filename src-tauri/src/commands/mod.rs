@@ -1129,7 +1129,7 @@ pub fn get_performance_metrics(_state: State<'_, AppState>) -> Result<serde_json
 // ---------------------------------------------------------------------------
 
 use crate::models::{
-    downloader::{download, DownloadHandle, ProgressFn},
+    downloader::{check_disk_space, download_from_sources, DownloadHandle, ProgressFn},
     installer::{install_from_archive, ExpectedFile},
     verifier::verify_archive,
     ModelManager,
@@ -1226,8 +1226,7 @@ pub async fn download_model(
     let archive_size = info.archive.size;
     if archive_size > 0 {
         if let Some(parent) = archive_path.parent() {
-            crate::resources::downloader::check_disk_space(parent, archive_size * 2)
-                .map_err(|e| format!("磁盘空间不足: {}", e))?;
+            check_disk_space(parent, archive_size * 2).map_err(|e| format!("磁盘空间不足: {e}"))?;
         }
     }
 
@@ -1260,12 +1259,12 @@ pub async fn download_model(
         );
     });
 
-    let result = download(
+    let result = download_from_sources(
         mgr.http_client(),
-        &info.archive.url,
+        &info.archive.sources,
         &archive_path,
         &handle,
-        Some(progress_cb),
+        Some(&progress_cb),
     )
     .await;
 
