@@ -25,7 +25,9 @@ dist-ssr
 
 # Tauri
 src-tauri/target
-src-tauri/Cargo.lock
+
+# sherpa-onnx local cache
+.cache/
 
 # Build artifacts & bundled binaries (regenerable / downloadable / obsolete)
 installers/
