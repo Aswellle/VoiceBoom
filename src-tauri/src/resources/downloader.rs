@@ -361,12 +361,23 @@ mod tests {
         handle.cancel();
         assert!(handle.is_cancelled());
     }
-
     #[test]
     fn test_cleanup_part() {
         let temp = std::env::temp_dir().join("voiceboom_test_cleanup.part");
         std::fs::write(&temp, b"test").unwrap();
         cleanup_part(&temp);
         assert!(!temp.exists());
+    }
+    #[test]
+    fn test_resource_descriptor_clone() {
+        let desc = ResourceDescriptor {
+            version: "1.0.0".into(),
+            archive: "test.tar.bz2".into(),
+            sha256: "abc123".into(),
+            sources: vec!["https://example.com/test.tar.bz2".into()],
+        };
+        let cloned = desc.clone();
+        assert_eq!(desc.version, cloned.version);
+        assert_eq!(desc.archive, cloned.archive);
     }
 }

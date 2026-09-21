@@ -1222,7 +1222,25 @@ pub async fn download_model(
     let models_dir = default_models_dir(&app_handle)?;
     let archive_path = models_dir.join(format!("{}.zip", info.id));
 
+    // Check disk space before downloading
+    let archive_size = info.archive.size;
+    if archive_size > 0 {
+        if let Some(parent) = archive_path.parent() {
+            crate::resources::downloader::check_disk_space(parent, archive_size * 2)
+                .map_err(|e| format!("磁盘空间不足: {}", e))?;
+        }
+    }
+
+    // Emit download started event
+    let _ = app_handle.emit(
+        "model_download_started",
+        serde_json::json!({
+            "model_id": model_id,
+        }),
+    );
+
     let handle = DownloadHandle::new();
+
     let downloads_arc = mgr.downloads();
     {
         let mut downloads = downloads_arc.write().await;
@@ -1251,10 +1269,20 @@ pub async fn download_model(
     )
     .await;
 
+    // Emit verifying event
+    let _ = app_handle.emit(
+        "model_download_verifying",
+        serde_json::json!({
+            "model_id": model_id,
+        }),
+    );
+    // Download complete, remove from active downloads
     {
         let mut downloads = downloads_arc.write().await;
         downloads.remove(&model_id);
     }
+
+    // Verify archive, then install.
 
     if let Err(e) = result {
         let _ = app_handle.emit(
@@ -1303,6 +1331,16 @@ pub async fn download_model(
             // active model (the user may be mid-recording with another version).
             // Emit the installed model info so the UI can prompt the user.
             std::fs::remove_file(&archive_path).ok();
+
+            // Emit ready event before complete
+            let _ = app_handle.emit(
+                "model_download_ready",
+                serde_json::json!({
+                    "model_id": model_id,
+                    "engine": res.engine,
+                    "version": res.version,
+                }),
+            );
 
             let _ = app_handle.emit(
                 "model:download_complete",

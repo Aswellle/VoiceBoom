@@ -2,8 +2,9 @@
 // Manages bundled ONNX models for sherpa-onnx inference
 // Models are bundled with the app or downloaded separately
 
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
+pub mod downloader;
+
+ use serde::{Deserialize, Serialize};
 
 /// Supported local ASR engines (sherpa-onnx based)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Hash)]

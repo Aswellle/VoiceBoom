@@ -164,8 +164,7 @@ mod tests {
     /// sustained production (memory safety).
     #[test]
     fn test_sustained_production_bounded() {
-        let (tx, _rx) = bounded_audio_channel_with_capacity(8);
-        let capacity = 8;
+        let _capacity = 8;
 
         // Send 1000 frames without consuming
         let mut last_sent_ok = false;
