@@ -420,6 +420,8 @@ bun run test:e2e         # E2E smoke test (scripts/e2e_smoke.mjs)
 
   - 创建 PR 时同样不添加任何 AI 合作者信息
 
+  - **提交前必须运行 `cargo fmt` 自动修复所有 Rust 格式问题**：每次提交前、推送前，必须主动运行 `cargo fmt` 并确认 `cargo fmt --check` 通过。不得手动调整格式，不得跳过此步骤。若 `cargo fmt --check` 报告差异，立即运行 `cargo fmt` 修复后再提交。本规则为不可跳过的强约束，与代码风格、测试等规则同级。
+
 ### 仓库管理硬性规则（永远不可违反）
 
   - **禁止修改公共仓库的可见性**：不得将任何公开（public）仓库切换为私有（private）或内部（internal），即使是为了清除 contributor 缓存、刷新索引或其他任何原因。此操作会导致 star 和 fork 数据永久丢失。
