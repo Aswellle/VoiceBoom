@@ -42,8 +42,22 @@
   --glass-blur: 30px;
   --glass-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
   --glass-radius: 20px;
-  --font-sf: "SF Pro Display", "Segoe UI Variable", system-ui, sans-serif;
-}
+
+  /* Radius tokens (P1: unified design system) */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-pill: 9999px;
+
+  /* Shadow tokens (P1: unified design system) */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.1);
+  --shadow-floating: 0 10px 40px rgba(0, 0, 0, 0.15);
+
+  /* Motion tokens (P1: unified design system) */
+  --motion-fast: 150ms;
+  --motion-normal: 300ms;
+  --motion-slow: 500ms;
 
 /* Dark theme tokens */
 .dark {
