@@ -200,9 +200,9 @@ pub fn remove_version(models_dir: &Path, engine: &str, version: &str) -> Result<
         && std::fs::read_dir(&engine_dir)
             .map(|mut d| d.next().is_none())
             .unwrap_or(false)
-        {
-            std::fs::remove_dir_all(&engine_dir).ok();
-        }
+    {
+        std::fs::remove_dir_all(&engine_dir).ok();
+    }
     Ok(())
 }
 

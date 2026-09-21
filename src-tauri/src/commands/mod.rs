@@ -97,9 +97,7 @@ pub async fn start_recording(
         })?;
         emit_state(&app_handle, &session);
     }
-    log::info!(
-        "[session={session_id}] recording.start engine={engine_name}"
-    );
+    log::info!("[session={session_id}] recording.start engine={engine_name}");
 
     // The previous recording's bridge task may still be finishing its final
     // transcription (seconds, for local engines). Wait for it to wind down
@@ -140,9 +138,7 @@ pub async fn start_recording(
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
     let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice);
-    log::info!(
-        "[session={session_id}] recording.config engine={engine_name} is_local={is_local}"
-    );
+    log::info!("[session={session_id}] recording.config engine={engine_name} is_local={is_local}");
     if is_local {
         let local_engine = resources::ResourceEngine::SenseVoice;
         let model_check = {
@@ -216,9 +212,7 @@ pub async fn start_recording(
             vad_sensitivity: vadSensitivity.unwrap_or(50),
             sample_rate: 16000,
         };
-        log::info!(
-            "[session={session_id}] asr.initialize engine={engine_name}"
-        );
+        log::info!("[session={session_id}] asr.initialize engine={engine_name}");
         match asr.initialize(config).await {
             Ok(()) => {
                 log::info!("[session={session_id}] asr.ready");
@@ -834,10 +828,10 @@ pub async fn inject_text(
 ) -> Result<serde_json::Value, String> {
     if text.is_empty() {
         return serde_json::to_value(&crate::injection::InjectionResult::Injected {
-                method: crate::injection::InjectionMethod::ClipboardPaste,
-                verified: false,
-            })
-            .map_err(|e| format!("{e}"));
+            method: crate::injection::InjectionMethod::ClipboardPaste,
+            verified: false,
+        })
+        .map_err(|e| format!("{e}"));
     }
 
     let mode = mode
@@ -862,11 +856,9 @@ pub async fn inject_text(
                 match Target::foreground() {
                     Ok(t) => crate::injection::InjectionTarget::new(t.hwnd, t.pid, t.exe, t.class),
                     Err(e) => {
-                        return serde_json::to_value(
-                            &crate::injection::InjectionResult::Failed {
-                                reason: format!("No target: {e}"),
-                            },
-                        )
+                        return serde_json::to_value(&crate::injection::InjectionResult::Failed {
+                            reason: format!("No target: {e}"),
+                        })
                         .map_err(|e| format!("{e}"));
                     }
                 }

@@ -158,9 +158,7 @@ impl LocalAsrAdapter {
                 })?,
             );
             self.last_vad_sensitivity = Some(config.vad_sensitivity);
-            log::info!(
-                "Loaded Silero VAD from {vad_model} (threshold={threshold:.2})"
-            );
+            log::info!("Loaded Silero VAD from {vad_model} (threshold={threshold:.2})");
         }
 
         // Create SenseVoice OfflineRecognizer

@@ -3,9 +3,9 @@
 //! Used by integration tests to simulate microphone input without real hardware.
 //! Produces silence (all zeros) or a sine wave pattern.
 
+use crate::audio::pipeline::AudioFrame;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
-use crate::audio::pipeline::AudioFrame;
 
 #[allow(dead_code)]
 /// A fake audio source that generates synthetic frames.

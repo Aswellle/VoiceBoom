@@ -3,10 +3,10 @@
 //! Tests the full recording pipeline without real microphone or OS interaction:
 //! hotkey pressed → session starting → recording → partial → segment final → utterance final → injection → idle
 
-use crate::audio::fake_source::FakeAudioSource;
 use crate::asr::aggregator::TranscriptAggregator;
 use crate::asr::engine_trait::{AsrConfig, AsrEngineType};
 use crate::asr::session::{AsrEvent, AsrSession, FakeAsrSession};
+use crate::audio::fake_source::FakeAudioSource;
 use crate::injection::fake_target::FakeInjectionTarget;
 use crate::injection::model::InjectionMethod;
 
@@ -131,7 +131,10 @@ async fn test_pipeline_duplicate_injection_prevention() {
 
     // First injection succeeds
     let result1 = injector.inject("text", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
-    assert!(matches!(result1, crate::injection::model::InjectionResult::Injected { .. }));
+    assert!(matches!(
+        result1,
+        crate::injection::model::InjectionResult::Injected { .. }
+    ));
 
     // Duplicate injection (same session + utterance) should be ignored
     let _result2 = injector.inject("text", InjectionMethod::ClipboardPaste, "sess-1", "utt-1");
@@ -145,7 +148,12 @@ async fn test_pipeline_stale_session_injection() {
     let injector = FakeInjectionTarget::new();
 
     // Injection from old session
-    injector.inject("old text", InjectionMethod::ClipboardPaste, "sess-old", "utt-1");
+    injector.inject(
+        "old text",
+        InjectionMethod::ClipboardPaste,
+        "sess-old",
+        "utt-1",
+    );
 
     // Verify: old injection was recorded
     assert_eq!(injector.attempt_count(), 1);

@@ -163,9 +163,7 @@ impl AsrManager {
             let now = tokio::time::Instant::now();
             if now > deadline {
                 timed_out = true;
-                log::warn!(
-                    "[AsrManager] finalize_and_drain timeout after {timeout:?}"
-                );
+                log::warn!("[AsrManager] finalize_and_drain timeout after {timeout:?}");
                 break;
             }
             let _remaining = deadline - now;

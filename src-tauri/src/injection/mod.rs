@@ -12,8 +12,8 @@
 #![allow(dead_code)]
 pub mod adapters;
 pub mod controller;
-pub mod model;
 pub mod fake_target;
+pub mod model;
 
 pub use controller::InjectionController;
 pub use model::{
