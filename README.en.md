@@ -1,9 +1,11 @@
-# 🎙️ VoiceBoom AI
+# 🎙️ VoiceBoom
 
-[![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](./src/test)
-[![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
-[![Rust](https://img.shields.io/badge/Rust-180%2B-EA5800?logo=rust)](https://www.rust-lang.org)
+[![Release](https://img.shields.io/github/v/release/Aswellle/VoiceBoom)](https://github.com/Aswellle/VoiceBoom/releases/latest)
+[![CI](https://github.com/Aswellle/VoiceBoom/actions/workflows/ci.yml/badge.svg)](https://github.com/Aswellle/VoiceBoom/actions/workflows/ci.yml)
+[![Tauri](https://img.shields.io/badge/Tauri-2.11-9C27F0?logo=tauri)](https://v2.tauri.app)
+[![Rust](https://img.shields.io/badge/Rust-1.88-EA5800?logo=rust)](https://www.rust-lang.org)
 [![React](https://img.shields.io/badge/React-19-61DAFB?logo=react)](https://react.dev)
+[![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-0078D6)](https://github.com/Aswellle/VoiceBoom/releases/latest)
 [![License](https://img.shields.io/badge/license-MIT%20%2B%20non--commercial-important)](./LICENSE)
 
 **[简体中文](./README.md) | English**
@@ -12,7 +14,23 @@
 
 > Like WeChat voice-to-text or iOS dictation: hold a hotkey, speak, release — text **appears directly in the focused input field**. No manual copy-paste.
 
-A low-latency real-time voice-to-text input tool for Windows / macOS. Hold a global hotkey to activate the microphone, speak naturally, and watch your words appear instantly in a glassmorphism floating window — then **auto-inject into whatever field has focus**.
+A low-latency real-time voice-to-text input tool for Windows / macOS. Hold a global hotkey to activate the microphone, speak naturally, and watch your words appear instantly in a glassmorphism floating window — then **auto-inject into whatever field has focus**. The default engine is a bundled offline SenseVoice model, so it **works out of the box with no API key**.
+
+---
+
+## Download
+
+Get installers from [Releases](https://github.com/Aswellle/VoiceBoom/releases/latest):
+
+- **Windows** — `.msi` installer, or the portable ZIP (requires the WebView2 Runtime)
+- **macOS** — Universal `.dmg` (Apple Silicon + Intel), plus an app `.zip`
+
+Every release ships a `SHA256SUMS.txt` for verification.
+
+| Platform | Requirement |
+|---|---|
+| Windows | Windows 10/11 + WebView2 Runtime |
+| macOS | macOS 12 (Monterey) or newer |
 
 ---
 
@@ -20,14 +38,17 @@ A low-latency real-time voice-to-text input tool for Windows / macOS. Hold a glo
 
 - 🎯 **Direct Input Injection** — Transcribed text appears at the cursor position (WeChat/iOS dictation experience), not just in a floating window
 - ⚡ **Real-time Streaming ASR** — Streaming ASR with real-time results (latency depends on engine and network)
-- 🎨 **System HUD Style** — Low-presence design, three-state display (Idle/Listening/Result), newest content first
-- 🔌 **Pluggable ASR Engines** — Local offline SenseVoice (built-in, works out of the box) / OpenAI Realtime / Deepgram Streaming
-- ⌨️ **Global Hotkey** — Push-to-talk: hold to speak, release to stop
+- 🔌 **Pluggable ASR Engines** — Local offline SenseVoice (built-in) / OpenAI Realtime / Deepgram Streaming, with **Auto / Offline / Cloud** engine modes
+- 🔁 **Cloud Auto-Fallback** — In Auto mode, prefer the local engine and fall back to the first configured cloud provider when it is unavailable
+- 📦 **Model Management** — Multiple versions side by side, resumable downloads, SHA-256 verification, atomic install (an interrupted install cannot damage the working version)
+- 🎨 **System HUD Style** — Low-presence design, three-state display (Idle / Listening / Result), adjustable density (compact / standard / expanded)
+- ⌨️ **Global Hotkey** — Push-to-talk: hold to speak, release to stop; Ctrl / Alt / Shift / Cmd combinations supported
+- 🎛️ **Input Policy** — Direct / Confirm / Recognize-only modes, configurable per scenario
 - 🔒 **Safe Injection** — Windows delayed-rendering technology: no clipboard history leaks, no clipboard corruption, UIPI auto-fallback
+- 🗂️ **History Panel** — Searchable recognition history with copy, select-all and clear
 - 🌐 **Multi-language** — Chinese/English/Japanese/Korean auto-detection and switching
-- 🧪 **Dual-layer Testing** — 124 Rust tests + 19 Vitest frontend tests
-- 🪶 **Lightweight** — Tauri 2.0, Rust backend with no Node.js dependency
-- 🎛️ **Flexible Input Policy** — Direct / Confirm / Recognize-only modes, configurable per scenario
+- 🧪 **Dual-layer Testing** — 149 Rust tests + 19 Vitest frontend tests
+- 🪶 **Lightweight** — Tauri 2, Rust backend with no Node.js runtime dependency
 
 ---
 
@@ -35,15 +56,18 @@ A low-latency real-time voice-to-text input tool for Windows / macOS. Hold a glo
 
 | Module | Choice |
 |------|------|
-| Desktop Framework | Tauri 2.0 (Rust) |
-| Frontend UI | React 19 + TypeScript + Tailwind CSS |
-| Animation | Framer Motion |
+| Desktop Framework | Tauri 2.11 (Rust) |
+| Frontend UI | React 19 + TypeScript + Tailwind CSS v3 |
+| Animation | Framer Motion (with `prefers-reduced-motion` support) |
 | State Management | Zustand |
-| Audio Capture | CPAL (Rust) |
-| Local ASR | sherpa-onnx (SenseVoice + Silero VAD) |
-| Cloud ASR | OpenAI Whisper / Deepgram (WebSocket) |
+| Audio Capture | CPAL (native rate + resample to 16 kHz mono f32) |
+| Local ASR | sherpa-onnx 1.13.8 (SenseVoice + Silero VAD) |
+| Cloud ASR | OpenAI Realtime / OpenAI Whisper / Deepgram (WebSocket) |
 | Text Injection | win-text-inject (Windows) / enigo (cross-platform) |
-| Database | SQLite (rusqlite) |
+| Database | SQLite (rusqlite, bundled) |
+| Credential Storage | DPAPI (Windows) / 0600 file (macOS, Linux) |
+
+> Versions are pinned by `rust-toolchain.toml` (Rust 1.88.0) and `config/sherpa-onnx.json` (sherpa-onnx 1.13.8, with SHA-256); builds run with `--locked` throughout.
 
 ---
 
@@ -51,9 +75,10 @@ A low-latency real-time voice-to-text input tool for Windows / macOS. Hold a glo
 
 ### Prerequisites
 
-- [Rust](https://www.rust-lang.org/tools/install) 1.80+
+- [Rust](https://www.rust-lang.org/tools/install) **1.88.0** (pinned by `rust-toolchain.toml`; rustup installs it automatically)
 - [Bun](https://bun.sh/) 1.2+ (preferred) or Node.js 20+
-- [Tauri CLI](https://v2.tauri.app/start/prerequisites/) 2.0+
+- [Tauri CLI](https://v2.tauri.app/start/prerequisites/) 2.11+
+- Platform build dependencies: see [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
 
 ### Install Dependencies
 
@@ -74,6 +99,17 @@ bun run dev              # Frontend-only dev server (browser, no Tauri shell)
 bun run tauri:build      # → src-tauri/target/release/bundle/{msi,nsis}/
 ```
 
+> **About the sherpa-onnx native library**: the first build **downloads** the archive for your platform automatically. For offline or reproducible builds, pre-fetch and verify it instead (no network dependency):
+>
+> ```bash
+> # Windows
+> powershell -ExecutionPolicy Bypass -File scripts/prepare-sherpa-onnx.ps1
+> # macOS / Linux / CI
+> python3 scripts/fetch-sherpa-archive.py
+> ```
+>
+> Both scripts pin the version from `config/sherpa-onnx.json` and verify its SHA-256. `bun run tauri:build:windows` already chains the Windows prefetch step.
+
 ---
 
 ## Testing
@@ -86,24 +122,25 @@ The project uses a two-layer testing strategy. Since the frontend relies heavily
 bun run test                # Run once (19 tests)
 bun run test:watch          # Watch mode
 bun run test:ui             # Web UI interface
-bun run coverage            # Coverage report
 ```
 
-Coverage:
-- `useAppStore` — Re-entrant guards, settings persistence, maxChars budget trimming, toast timers, draft settings
-- `SegmentItem` — Rendering, accessibility semantics (role/aria-label/keyboard), clipboard copy + textarea fallback
+Coverage (`src/test/`):
+- `useAppStore` — Re-entrant guards, settings persistence and migration, maxChars budget trimming, toast timers
+- `SegmentItem` — Rendering, accessibility semantics (role/aria-label), clipboard copy + textarea fallback
 - `FloatingWindow` — Control rendering, recording state toggle, auto-resize by content, newest-first display
 
-### Rust Unit Tests
+### Rust Tests
 
 ```bash
-cargo test --lib            # 124 tests
+cargo test --locked         # 149 tests
+cargo test --locked --lib   # Same (lib target only)
 ```
 
 Coverage:
-- Recording session state machine, audio pipeline, ASR adapters, aggregator, flush finalization
-- Injection controller, InjectionResult, session-bound deduplication
-- Transactional shortcut registration, settings persistence, SQLite operations
+- **`asr/integration_tests.rs`** — Session lifecycle, Deepgram/OpenAI event-parsing contracts, flush and finalization, aggregator (empty / partial / multi-utterance / out-of-order / duplicate prevention)
+- **`asr/failure_tests.rs`** — Failure injection and recovery: error releases resources, duplicate-start prevention, rapid 10× start-stop, audio device failure, network disconnect, 401/429, missing model, shortcut conflict, malformed responses
+- **`asr/pipeline_tests.rs`** — Audio pipeline driven end to end by a fake audio source
+- Inline tests — Injection controller and target validation, model verification/install, provider resolution and auto-fallback, distribution flavor detection, database operations
 
 ### End-to-End Tests (tauri-driver)
 
@@ -116,66 +153,91 @@ E2E covers: app launch, engine label, start/stop button, settings button.
 
 > **Not covered** (requires real mic / system message loop / WebView2): global hotkey, actual recording, ASR transcription, desktop drag.
 
+### CI
+
+`.github/workflows/ci.yml` runs four jobs on every push and pull request:
+
+| Job | Contents |
+|---|---|
+| Frontend | Type check + Vitest |
+| Rust | `cargo fmt --check` + clippy (`-D warnings`) + tests + offline build check |
+| macOS | `cargo check --all-targets` (compiles the macOS-only `cfg` branches) |
+| Windows | clippy + tests + Tauri JS/Rust version alignment check + offline build check |
+
 ---
 
 ## Project Structure
 
 ```
 VoiceBoom/
-├── src/                        # React 19 frontend (TypeScript + Tailwind CSS)
+├── src/                          # React 19 frontend (TypeScript + Tailwind CSS)
 │   ├── components/
-│   │   ├── FloatingWindow/     # Floating window core (HUD three-state, newest-first, auto-resize)
-│   │   ├── Settings/           # Settings panel (5 task-oriented sections)
-│   │   └── Waveform/           # Audio waveform visualization (Canvas rendering)
+│   │   ├── FloatingWindow/       # Floating window core (HUD three-state, newest-first, auto-resize)
+│   │   ├── Settings/             # Settings panel (6 sections, incl. models and cloud providers)
+│   │   │   ├── index.tsx
+│   │   │   └── controls.tsx      # Shared form primitives (Slider/Select/TextInput)
+│   │   ├── HistoryPanel/         # Recognition history (search, copy, clear)
+│   │   └── Waveform/             # Audio waveform visualization (Canvas, 12 bars)
 │   ├── hooks/
-│   │   ├── useAsr.ts           # ASR recording lifecycle + injection calls
-│   │   └── useGlobalShortcut.ts # Global hotkey push-to-talk
+│   │   ├── useAsr.ts             # ASR recording lifecycle + result subscriptions
+│   │   └── useGlobalShortcut.ts  # Global hotkey push-to-talk
 │   ├── stores/
-│   │   └── useAppStore.ts      # Zustand global state (settings/results/UI/injection)
-│   ├── test/                   # Vitest test suite
-│   │   ├── setup.ts            # Tauri API mock + jsdom patches
-│   │   ├── store.test.ts       # Store logic tests
-│   │   └── components.test.tsx # Component rendering & interaction tests
-│   ├── utils/                  # Utility functions
-│   ├── styles/                 # Global styles + semantic design tokens
-│   ├── App.tsx                 # Root routing (by window label) + shortcut error banner
-│   └── main.tsx                # React 19 entry + ErrorBoundary
-├── src-tauri/                  # Tauri 2.0 Rust backend
+│   │   └── useAppStore.ts        # Zustand global state (settings/results/models/providers/UI)
+│   ├── constants/
+│   │   └── engines.ts            # Single source of truth for engine metadata
+│   ├── utils/                    # clipboard and other utilities
+│   ├── styles/                   # Global styles + semantic design tokens
+│   ├── test/                     # Vitest suite + Tauri mocks
+│   ├── App.tsx                   # Root routing (by window label) + tray/hotkey events
+│   └── main.tsx                  # React 19 entry + ErrorBoundary
+├── src-tauri/                    # Tauri 2 Rust backend
 │   ├── src/
-│   │   ├── asr/                # ASR engine abstraction + adapters
-│   │   │   ├── adapters/       # local(SenseVoice) / openai_whisper / deepgram
-│   │   │   ├── engine_trait.rs # StreamingAsrEngine trait
-│   │   │   └── streaming.rs    # AsrManager (engine reuse)
-│   │   ├── audio/              # CPAL audio capture + resampling
-│   │   ├── commands/           # Tauri command handlers (incl. inject_text)
-│   │   ├── inject.rs           # Cross-platform text injection dispatch
-│   │   ├── injection/          # Injection controller + adapters
-│   │   ├── shortcut/           # Global hotkey (platform defaults)
-│   │   ├── db/                 # SQLite (settings/history/shortcuts)
-│   │   ├── resources/          # ONNX model path resolution
-│   │   ├── tray/               # System tray
-│   │   ├── lib.rs              # AppState + command registration + tray
-│   │   └── main.rs             # Entry (windows_subsystem)
-│   ├── vendor/                 # Vendored crate source (no external deps)
-│   │   ├── win-text-inject/    # Windows delayed-render clipboard injection
-│   │   └── enigo/              # Cross-platform keystroke simulation
-│   ├── capabilities/           # Tauri permissions
-│   ├── gen/schemas/            # Generated ACL schema
-│   ├── icons/                  # App icons
-│   ├── tools/                  # asr_debug debugging tool
-│   ├── tauri.conf.json         # Window definitions + build config
-│   └── tauri.test.conf.json    # Single-window E2E test config
+│   │   ├── asr/                  # ASR abstraction + adapters
+│   │   │   ├── adapters/         # local(SenseVoice) / openai_realtime / openai_whisper / deepgram
+│   │   │   ├── engine_trait.rs   # StreamingAsrEngine trait
+│   │   │   ├── session.rs        # AsrSession trait + unified AsrEvent model
+│   │   │   ├── streaming.rs      # AsrManager (resident local engine reuse)
+│   │   │   ├── aggregator.rs     # TranscriptAggregator (only UtteranceFinal triggers injection)
+│   │   │   └── *_tests.rs        # Integration / failure-injection / pipeline tests
+│   │   ├── audio/                # CPAL capture + bounded real-time pipeline + fake source (tests)
+│   │   ├── commands/             # 31 Tauri commands + session state machine
+│   │   ├── models/               # Model management: registry, downloader, verifier, atomic installer
+│   │   ├── provider/             # Cloud providers: config, credentials, registry, auto-fallback
+│   │   ├── injection/            # Injection controller + platform adapters + fake target (tests)
+│   │   ├── inject.rs             # Cross-platform text injection dispatch
+│   │   ├── secure_keystore.rs    # Credential storage (DPAPI / 0600 file)
+│   │   ├── session.rs            # Recording session state machine
+│   │   ├── shortcut/             # Global hotkey + platform defaults
+│   │   ├── db/                   # SQLite (settings/history/shortcuts + schema migrations)
+│   │   ├── resources/            # Model path resolution + distribution flavor detection
+│   │   ├── tray/                 # System tray menu
+│   │   ├── lib.rs                # AppState + command registration + tray + file logger
+│   │   └── main.rs               # Entry (windows_subsystem)
+│   ├── vendor/                   # Vendored crate source (path dependencies)
+│   │   ├── win-text-inject/      # Windows delayed-render clipboard injection
+│   │   └── enigo/                # Cross-platform keystroke simulation
+│   ├── capabilities/             # Tauri permissions
+│   ├── tools/asr_debug.rs        # ASR debugging tool
+│   ├── tauri.conf.json           # Window definitions + build config
+│   ├── tauri.offline.conf.json   # Offline bundling config (bundles asr-bundle)
+│   └── tauri.test.conf.json      # Single-window E2E test config
+├── config/
+│   └── sherpa-onnx.json          # Native library version, archive names and SHA-256 (single source)
+├── models/
+│   └── registry.json             # Model registry (embedded at compile time)
 ├── scripts/
-│   └── e2e_smoke.mjs           # tauri-driver end-to-end smoke test
-├── docs/
-│   └── DEVELOPMENT.md          # Development guide
-├── public/                     # Static assets
-├── index.html                  # Vite entry HTML
-├── verify_asr_integration.sh   # ASR integration verification script
-├── package.json                # Dependencies + scripts
-├── vite.config.ts              # Vite + Vitest config
-├── tailwind.config.js          # Tailwind config
-└── tsconfig.json               # TypeScript config
+│   ├── prepare-sherpa-onnx.ps1   # Windows: prefetch + verify the native archive
+│   ├── fetch-sherpa-archive.py   # macOS/Linux/CI: same
+│   ├── prepare-models.py         # CI: build model release archives
+│   ├── verify-models.py          # CI: verify model archive integrity
+│   ├── install-model-pack.py     # CI: install a model pack for offline builds
+│   ├── merge-macos-universal.sh  # lipo-merge arm64 + x64 into a Universal bundle
+│   └── e2e_smoke.mjs             # tauri-driver end-to-end smoke test
+├── docs/                         # ARCHITECTURE / ASR / DEVELOPMENT / PERFORMANCE / SECURITY / TESTING
+├── .github/workflows/            # ci.yml / release.yml / model-release.yml
+├── AGENTS.md                     # Architecture and change constraints (for contributors)
+├── rust-toolchain.toml           # Pins Rust 1.88.0
+└── package.json                  # Dependencies + scripts
 ```
 
 ---
@@ -198,16 +260,16 @@ Naive approaches (save clipboard → overwrite → Ctrl+V → sleep → restore)
 3. **UIPI Silent Failure** — Integrity level detection; on failure, text stays in clipboard with user notification
 4. **Clipboard Restore Race** — Delayed rendering (`WM_RENDERFORMAT`), restore strictly ordered after target read, no constant delays
 
-> Injection mode can be toggled in Settings (`injectionMode`: `clipboard` / `typing`).
+> Injection mode can be toggled in Settings (`injectionMode`: `clipboard` / `typing`). `InjectionController` handles deduplication, session binding and target validation; the target window is snapshotted before injection, so switching windows no longer injects into the wrong field.
 
 ---
 
 ## Version Roadmap
 
-- **V1.0 (current)** — Floating window HUD + local offline ASR + global hotkey + text injection + dual-layer testing + flexible input policy
-- **V1.1** — Auto punctuation, filler removal, backtrack correction, personal dictionary, app profiles
-- **V1.5** — AI polish modes, tone/style modes, translation
-- **V2.0** — Voice workflow platform, meeting mode, plugin API
+- **v0.4.x (current)** — Floating window HUD, local offline SenseVoice, global hotkey, text injection, input policy, model management and cloud provider auto-fallback, three-platform CI
+- **v0.5** — Auto punctuation, filler removal, backtrack correction, personal dictionary, app profiles
+- **v1.0** — AI polish modes, tone/style modes, translation
+- **v2.0** — Voice workflow platform, meeting mode, plugin API
 
 ---
 
