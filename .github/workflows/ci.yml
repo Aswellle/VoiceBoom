@@ -103,6 +103,49 @@ jobs:
           VOICEBOOM_OFFLINE: "1"
 
   # ------------------------------------------------------------
+  # macOS: compile check
+  #
+  # The `#[cfg(unix)]` and `#[cfg(target_os = "macos")]` branches are not
+  # interchangeable: `libc::statvfs::f_bavail` is u32 on macOS and u64 on
+  # Linux, so code that compiles on the Linux job can still fail to build
+  # here. Without this job a macOS-only break only surfaces after a release
+  # tag is pushed.
+  # ------------------------------------------------------------
+  macos:
+    name: macOS (compile check)
+    runs-on: macos-15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache sherpa-onnx
+        uses: actions/cache@v6
+        with:
+          path: .cache/sherpa-onnx
+          key: sherpa-onnx-macos-arm64-1.13.8
+
+      - name: Prepare sherpa-onnx
+        run: python3 scripts/fetch-sherpa-archive.py
+
+      - name: Cache Cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: macos-cargo-${{ hashFiles('src-tauri/Cargo.lock') }}
+          restore-keys: |
+            macos-cargo-
+
+      - name: Check
+        run: cargo check --locked --all-targets
+        working-directory: src-tauri
+
+  # ------------------------------------------------------------
   # Windows: build + test with sherpa bootstrap
   # ------------------------------------------------------------
   windows:

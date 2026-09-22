@@ -172,9 +172,9 @@ fn free_bytes(path: &Path) -> Result<u64, String> {
     if rc != 0 {
         return Err(format!("无法读取磁盘空间: {}", path.display()));
     }
-    // f_bavail and f_frsize are 64-bit on the Linux and macOS targets we
-    // build for, so this stays a plain u64 multiplication.
-    Ok(stat.f_bavail * stat.f_frsize)
+    // `f_bavail` is 32-bit on macOS and 64-bit on Linux; widen both sides
+    // instead of assuming they line up. The product is bytes either way.
+    Ok(u64::from(stat.f_bavail) * u64::from(stat.f_frsize))
 }
 
 /// Download from an ordered list of sources, falling back on failure.
