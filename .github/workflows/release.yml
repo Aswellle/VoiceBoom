@@ -630,17 +630,44 @@ jobs:
 
           mkdir -p upload
 
+          # `find -name` is case-sensitive, and the NSIS installer is produced
+          # as `...-setup.exe`. Matching `*Setup.exe` therefore dropped it from
+          # every release up to v0.4.2 without failing anything.
           find release-assets \
             -type f \
             \( \
-              -name "*.msi" -o \
-              -name "*Setup.exe" -o \
-              -name "*.zip" -o \
-              -name "*.dmg" \
+              -iname "*.msi" -o \
+              -iname "*-setup.exe" -o \
+              -iname "*.zip" -o \
+              -iname "*.dmg" \
             \) \
             -exec cp {} upload/ \;
 
           ls -lah upload
+
+      - name: Verify every expected asset was collected
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          cd upload
+
+          # A release is complete only when each platform ships both its
+          # installer and its archive. Fail loudly instead of publishing a
+          # subset that looks fine.
+          require() {
+            if ! compgen -G "$1" >/dev/null; then
+              echo "missing expected release asset: $1"
+              ls -la .
+              exit 1
+            fi
+          }
+
+          require "*.msi"
+          require "*-setup.exe"
+          require "VoiceBoom-Windows-x64-Portable.zip"
+          require "VoiceBoom-macOS-Universal.dmg"
+          require "VoiceBoom-macOS-Universal.zip"
 
       - name: Generate checksums
         shell: bash
