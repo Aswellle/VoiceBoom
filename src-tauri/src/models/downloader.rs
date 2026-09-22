@@ -172,9 +172,15 @@ fn free_bytes(path: &Path) -> Result<u64, String> {
     if rc != 0 {
         return Err(format!("无法读取磁盘空间: {}", path.display()));
     }
-    // `f_bavail` is 32-bit on macOS and 64-bit on Linux; widen both sides
-    // instead of assuming they line up. The product is bytes either way.
-    Ok(u64::from(stat.f_bavail) * u64::from(stat.f_frsize))
+    // `statvfs` field widths differ by platform: `f_bavail` is `u32` on macOS
+    // and `u64` on Linux. Widen only the macOS side — widening both is a no-op
+    // on Linux, which clippy rejects as a useless conversion under `-D warnings`.
+    #[cfg(target_os = "macos")]
+    let avail = u64::from(stat.f_bavail);
+    #[cfg(not(target_os = "macos"))]
+    let avail = stat.f_bavail;
+
+    Ok(avail * stat.f_frsize)
 }
 
 /// Download from an ordered list of sources, falling back on failure.
