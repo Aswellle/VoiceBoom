@@ -1,5 +1,5 @@
 
-# 🎙️ VoiceBoom AI
+# 🎙️ VoiceBoom
 
 [![Tests](https://img.shields.io/badge/tests-143%20passing-brightgreen)](./src/test)
 [![Tauri](https://img.shields.io/badge/Tauri-2.0-9C27F0?logo=tauri)](https://v2.tauri.app)
