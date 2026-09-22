@@ -47,19 +47,24 @@ fn emit_asr_event(app_handle: &AppHandle, event: &crate::asr::AsrEvent) {
 }
 // Tauri command handlers — bridge between frontend and Rust backend
 
-/// P0-2: Parse engine type string to AsrEngineType enum.
-/// Accepts both new ProviderId-aligned IDs and legacy aliases.
-fn parse_engine_type(engine: &str) -> AsrEngineType {
+/// P0-2: Parse an engine id into the adapter that will serve it.
+///
+/// Accepts the ProviderId-aligned ids plus the aliases persisted by earlier
+/// builds. Unknown ids and ids with no adapter behind them are rejected
+/// instead of being swapped for the local engine — quietly recording with an
+/// engine the user did not choose is worse than refusing to start.
+fn parse_engine_type(engine: &str) -> Result<AsrEngineType, String> {
     match engine {
-        // New ProviderId-aligned IDs (P0-2)
-        "local_sense_voice" => AsrEngineType::LocalSenseVoice,
-        "openai_realtime" => AsrEngineType::OpenAIRealtimeTranscription,
-        "deepgram_streaming" => AsrEngineType::DeepgramStreaming,
-        // Legacy aliases for backward compatibility
-        "openai_whisper" => AsrEngineType::OpenAIRealtimeTranscription,
-        "deepgram" => AsrEngineType::DeepgramStreaming,
-        "whisper_cpp" | "funasr" => AsrEngineType::LocalSenseVoice,
-        _ => AsrEngineType::LocalSenseVoice,
+        // ProviderId-aligned ids (P0-2).
+        "local_sense_voice" => Ok(AsrEngineType::LocalSenseVoice),
+        "openai_realtime" => Ok(AsrEngineType::OpenAIRealtimeTranscription),
+        "deepgram_streaming" => Ok(AsrEngineType::DeepgramStreaming),
+        // Aliases persisted by builds up to 0.3.2. The frontend migrates them
+        // on load; accepted here so a direct invoke still behaves.
+        "openai_whisper" => Ok(AsrEngineType::OpenAIRealtimeTranscription),
+        "deepgram" => Ok(AsrEngineType::DeepgramStreaming),
+        "whisper_cpp" | "funasr" => Ok(AsrEngineType::LocalSenseVoice),
+        other => Err(format!("不支持的引擎：{other}")),
     }
 }
 
@@ -144,8 +149,18 @@ pub async fn start_recording(
         }
     }
 
-    let engine_str = engine.as_deref().unwrap_or("openai_whisper");
-    let engine_type = parse_engine_type(engine_str);
+    // Default to the bundled offline engine, matching `engine_name` above.
+    let engine_str = engine.as_deref().unwrap_or("local_sense_voice");
+    let engine_type = match parse_engine_type(engine_str) {
+        Ok(engine_type) => engine_type,
+        Err(e) => {
+            log::error!("[session={session_id}] recording.config rejected: {e}");
+            let mut session = state.session.lock().map_err(|e| e.to_string())?;
+            session.fail(&e);
+            emit_state(&app_handle, &session);
+            return Err(e);
+        }
+    };
 
     // Auto-configure endpoint for local engines (sherpa-onnx)
     let mut resolved_endpoint = endpoint.clone();
@@ -603,7 +618,7 @@ pub fn switch_engine(
 ) -> Result<serde_json::Value, String> {
     log::info!("Switching engine to: {engine}");
 
-    let engine_type = parse_engine_type(&engine);
+    let engine_type = parse_engine_type(&engine)?;
     let is_local = matches!(engine_type, AsrEngineType::LocalSenseVoice); // Only local engine now
 
     let mut result = serde_json::json!({

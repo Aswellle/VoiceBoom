@@ -243,16 +243,17 @@ function migrateEngineId(oldId: string): AsrEngineType {
     case 'funasr':
     case 'whisper_cpp':
       return 'local_sense_voice';
+    // Through 0.3.2 this ID named the realtime Whisper API; it was later
+    // reassigned to the REST provider. A stored value therefore still means
+    // realtime, and has to be migrated before the new meaning can apply.
     case 'openai_whisper':
       return 'openai_realtime';
     case 'deepgram':
       return 'deepgram_streaming';
-    // New IDs pass through unchanged
+    // Canonical IDs pass through unchanged.
     case 'local_sense_voice':
     case 'openai_realtime':
     case 'deepgram_streaming':
-    case 'openai_whisper':
-    case 'custom_openai_compatible':
       return oldId;
     default:
       // Unknown engine — fall back to local (the product default)

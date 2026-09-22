@@ -54,45 +54,45 @@ pub fn create_tray(app: &AppHandle<Runtime>) -> tauri::Result<TrayIcon<Runtime>>
     Ok(tray)
 }
 
+/// Menu id prefix for engine entries; the handler emits the suffix verbatim.
+const ENGINE_MENU_PREFIX: &str = "engine_";
+
+/// Engines offered in the tray, mirroring `AVAILABLE_ENGINES` in
+/// `src/constants/engines.ts`.
+///
+/// Only engines the backend can actually route appear here: listing an engine
+/// is a promise that picking it starts that engine. The menu id is
+/// `engine_<id>`, so the label and the id emitted to the frontend cannot drift
+/// apart — which they did during the P0-2 rename, when the tray kept emitting
+/// `openai_whisper` while that id had been reassigned to the REST provider.
+const TRAY_ENGINES: &[(&str, &str)] = &[
+    ("local_sense_voice", "SenseVoice（本地）"),
+    ("openai_realtime", "OpenAI Whisper API"),
+    ("deepgram_streaming", "Deepgram"),
+];
+
 /// Create the ASR engine selection submenu
 fn create_engine_submenu(app: &AppHandle<Runtime>) -> tauri::Result<Submenu<Runtime>> {
-    let whisper = CheckMenuItem::with_id(
-        app,
-        "engine_whisper",
-        "OpenAI Whisper API",
-        true,
-        true,
-        None::<&str>,
-    )?;
-    let deepgram = CheckMenuItem::with_id(
-        app,
-        "engine_deepgram",
-        "Deepgram",
-        true,
-        false,
-        None::<&str>,
-    )?;
-    let whisper_cpp = CheckMenuItem::with_id(
-        app,
-        "engine_whisper_cpp",
-        "Whisper.cpp (本地)",
-        true,
-        false,
-        None::<&str>,
-    )?;
-    let funasr = CheckMenuItem::with_id(
-        app,
-        "engine_funasr",
-        "FunASR (本地)",
-        true,
-        false,
-        None::<&str>,
-    )?;
+    let mut items = Vec::with_capacity(TRAY_ENGINES.len());
 
-    let submenu = SubmenuBuilder::with_id(app, "engine", "ASR 引擎")
-        .items(&[&whisper, &deepgram, &whisper_cpp, &funasr])
-        .build()?;
-    Ok(submenu)
+    for (id, label) in TRAY_ENGINES {
+        items.push(CheckMenuItem::with_id(
+            app,
+            format!("{ENGINE_MENU_PREFIX}{id}"),
+            *label,
+            true,
+            *id == "local_sense_voice",
+            None::<&str>,
+        )?);
+    }
+
+    let mut builder = SubmenuBuilder::with_id(app, "engine", "ASR 引擎");
+
+    for item in &items {
+        builder = builder.item(item);
+    }
+
+    builder.build()
 }
 
 /// Create the language selection submenu
@@ -117,11 +117,10 @@ fn handle_menu_event(app: &AppHandle<Runtime>, event: tauri::menu::MenuEvent) {
             toggle_floating_window(app);
         }
 
-        // Engine selection
-        "engine_whisper" => set_engine(app, "openai_whisper"),
-        "engine_deepgram" => set_engine(app, "deepgram"),
-        "engine_whisper_cpp" => set_engine(app, "whisper_cpp"),
-        "engine_funasr" => set_engine(app, "funasr"),
+        // Engine selection — the suffix of the menu id *is* the engine id.
+        id if id.starts_with(ENGINE_MENU_PREFIX) => {
+            set_engine(app, &id[ENGINE_MENU_PREFIX.len()..]);
+        }
 
         // Language selection
         "lang_auto" => set_language(app, "auto"),

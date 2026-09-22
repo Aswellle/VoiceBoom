@@ -49,19 +49,25 @@ export const ENGINES: EngineInfo[] = [
     endpointPlaceholder: 'wss://api.deepgram.com/v1/listen',
   },
   {
+    // P0-3: No REST adapter is wired up — the Rust `AsrEngineType` enum has no
+    // REST variant, so selecting this used to be routed to another engine
+    // without telling the user. Hidden until the adapter exists.
     id: 'openai_whisper',
     name: 'OpenAI Whisper (REST)',
-    description: 'OpenAI Whisper REST API，适合非实时场景',
+    description: 'OpenAI Whisper REST API，适合非实时场景（实验性，尚未实现）',
     isLocal: false,
+    experimental: true,
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
     keyHelp: '从 platform.openai.com/api-keys 获取 API Key',
     endpointPlaceholder: 'https://api.openai.com/v1/audio/transcriptions',
   },
   {
+    // P0-3: Same as above — no adapter, so it must not be selectable.
     id: 'custom_openai_compatible',
     name: 'Custom OpenAI-Compatible',
-    description: '兼容 OpenAI API 格式的自定义服务（Ollama、本地服务等）',
+    description: '兼容 OpenAI API 格式的自定义服务（Ollama、本地服务等）（实验性，尚未实现）',
     isLocal: false,
+    experimental: true,
     keyPlaceholder: 'sk-xxxxxxxxxxxxxxxxxxxxxxxx',
     keyHelp: '输入你的 API Key',
     endpointPlaceholder: 'wss://your-server.com/v1/audio/transcriptions',
