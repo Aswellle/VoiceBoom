@@ -122,6 +122,38 @@ jobs:
         with:
           bun-version: ${{ env.BUN_VERSION }}
 
+      - name: Install frontend dependencies
+        run: bun install --frozen-lockfile
+
+      # The bundler refuses to run when the JS packages and the Rust crates sit
+      # on different minor versions (e.g. @tauri-apps/api 2.2.0 against
+      # tauri 2.11.6). Nothing else in CI loads both sides, so without this
+      # check the mismatch only surfaces once a release tag is already pushed.
+      #
+      # `tauri info` reports the mismatch but still exits 0, so the verdict has
+      # to be read from its output. Requiring the package list first keeps a
+      # future CLI change from turning this into a silent pass.
+      - name: Verify Tauri JS/Rust version alignment
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          OUT="$(bunx tauri info 2>&1 || true)"
+
+          if ! grep -q '^\[-\] Packages' <<<"$OUT"; then
+            echo "tauri info did not report installed packages:"
+            echo "$OUT"
+            exit 1
+          fi
+
+          if grep -q 'version mismatched' <<<"$OUT"; then
+            echo "Tauri JS and Rust versions are out of step:"
+            sed -n '/version mismatched/,$p' <<<"$OUT"
+            exit 1
+          fi
+
+          echo "Tauri JS/Rust versions are aligned"
+
       - name: Cache sherpa-onnx
         uses: actions/cache@v6
         with:

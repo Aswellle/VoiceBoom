@@ -18,12 +18,12 @@
     "test:e2e": "node scripts/e2e_smoke.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.2.0",
-    "@tauri-apps/plugin-dialog": "2.2.0",
-    "@tauri-apps/plugin-fs": "2.2.0",
-    "@tauri-apps/plugin-global-shortcut": "2.2.0",
-    "@tauri-apps/plugin-shell": "2.2.0",
-    "@tauri-apps/plugin-store": "2.2.0",
+    "@tauri-apps/api": "2.11.1",
+    "@tauri-apps/plugin-dialog": "2.7.3",
+    "@tauri-apps/plugin-fs": "2.5.2",
+    "@tauri-apps/plugin-global-shortcut": "2.3.2",
+    "@tauri-apps/plugin-shell": "2.3.6",
+    "@tauri-apps/plugin-store": "2.4.5",
     "framer-motion": "^11.18.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
