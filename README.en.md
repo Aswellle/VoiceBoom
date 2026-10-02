@@ -280,5 +280,11 @@ MIT License with Commercial Use Restriction — see [LICENSE](./LICENSE).
 This software adds a **commercial use restriction** to the MIT License: personal learning, research, and non-commercial use are free to use and distribute; **any commercial use (sales, licensing, embedding in commercial products, etc.) requires prior written permission from the author (wellerlee820@163.com)**.
 
 ---
+## ⭐ Support this project
 
+If VoiceBoom has helped you, please give me a ⭐️ Star!
+
+Every piece of your support is the driving force behind my continuous improvement.
+
+---
 *Built with ❤️ using Tauri, React, and Rust.*
