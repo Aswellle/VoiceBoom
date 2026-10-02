@@ -280,5 +280,11 @@ MIT License with Commercial Use Restriction — 详见 [LICENSE](./LICENSE)。
 本软件在 MIT 许可证基础上附加**商业化使用限制**：个人学习、研究、非商业用途可自由使用与分发；**任何商业化使用（销售、授权、嵌入商业产品等）须事先获得作者（wellerlee820@163.com）的书面许可**。
 
 ---
+## ⭐ 支持这个项目
 
+如果VoiceBoom对你有帮助，欢迎给我一个 ⭐️ Star！
+
+你的每一次支持，都是我持续改进的动力。
+
+---
 *Built with ❤️ using Tauri, React, and Rust.*
